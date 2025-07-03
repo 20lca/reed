@@ -11,3 +11,6 @@ class Config:
     REED_PATH = Path.home()/"OneDrive - 2.-0 LCA Consultants ApS"/"REED_ 1277"
 
     BONSAI_PATH = REED_PATH/"data"/"dkea_exiobase_version"/"0.1.1"
+
+    PROJECT_NAME = 'reed'
+    BONSAI_NAME = 'bonsai_231231'
