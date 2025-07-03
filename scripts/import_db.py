@@ -38,11 +38,11 @@ def main(path_to_tidy_files:Path=None):
 
     
 
-    db_name = 'bonsai_231231'
+    db_name = config.BONSAI_NAME
     
     # import biosphere 3 if needed
     bi.remote.install_project(project_key="ecoinvent-3.10-biosphere",
-                              project_name='reed',
+                              project_name=config.PROJECT_NAME,
                               overwrite_existing=True)
     
     bd.projects.set_current('reed')
