@@ -1,0 +1,23 @@
+name: reed
+channels:
+  - cmutel
+  - conda-forge
+dependencies:
+  - python=3.11
+  - numpy
+  - bw2analyzer
+  - pip
+  - pandas
+  - jupyterlab
+  - seaborn
+  - pypardiso # otherwise it is very slow
+  - country_converter
+  - bw2data<=4.0.dev60
+  - bw2calc>=2.0.dev18
+  - bw2parameters>=1.1.0
+  - pytest
+  - geopandas
+  - geodatasets
+  - plotly
+  - pip:
+    - -r requirements.txt

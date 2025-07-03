@@ -1,0 +1,32 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[project]
+name = "reed"
+version = "0.0.2"
+dependencies = [
+  "pandas",
+  "jupyterlab",
+  "pytest",
+  "geopandas",
+  "geodatasets",
+  "country_converter",
+  "pypardiso",
+  "bw2io @ git+https://github.com/mfastudillo/brightway2-io.git@io",
+  "bw2analyzer",
+  "bw2data<=4.0.dev60",
+  "bw2calc>=2.0.dev18",
+  "bw2parameters>=1.1.0",
+  "polyviz",
+  "d3blocks @ git+https://github.com/romainsacchi/d3blocks.git",
+  "plotly",
+
+]
+
+requires-python = ">=3.8"
+
+readme = "README.md"
