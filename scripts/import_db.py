@@ -24,16 +24,16 @@ def main(path_to_tidy_files:Path=None):
     if path_to_tidy_files is None:
         
         exio_tidy_path = config.BONSAI_PATH
-        assert exio_tidy_path.exists(),exio_tidy_path
+        #assert exio_tidy_path.exists(),exio_tidy_path
     else:
         exio_tidy_path = path_to_tidy_files
 
     # overwrite with environment variable if existing
-    _ademe_folder = os.environ.get('reed_bonsai_folder')
+    _bonsai_folder = os.environ.get('reed_bonsai_folder')
 
-    if _ademe_folder is not None:
+    if _bonsai_folder is not None:
         
-        exio_tidy_path = Path(_ademe_folder)
+        exio_tidy_path = Path(_bonsai_folder)
 
     assert exio_tidy_path.is_dir()
 
