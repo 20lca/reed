@@ -12,7 +12,8 @@ from reed import utils
 # from ademe.bonsai_strategies import mapb3
 
 def main(path_to_tidy_files:Path=None):
-    """Creates a Brightway project called '_ademe', and creates the following databases:
+    """Creates a Brightway project called as defined in the config under utils., 
+    and creates the following databases:
     - exiobase4 (technosphere activities/products)
     - biosphere3 (default elementary flows)
     - exiobase4 biosphere (elementary flows only present in exiobase)
