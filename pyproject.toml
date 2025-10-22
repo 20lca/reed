@@ -18,7 +18,7 @@ dependencies = [
   "pypardiso",
   "bw2io @ git+https://github.com/mfastudillo/brightway2-io.git@io",
   "bw2analyzer",
-  "bw2data<=4.0.dev60",
+  "bw2data",
   "bw2calc>=2.0.dev18",
   "bw2parameters>=1.1.0",
   "polyviz",

@@ -12,7 +12,7 @@ dependencies:
   - seaborn
   - pypardiso # otherwise it is very slow
   - country_converter
-  - bw2data<=4.0.dev60
+  - bw2data
   - bw2calc>=2.0.dev18
   - bw2parameters>=1.1.0
   - pytest
