@@ -8,7 +8,7 @@ class Config:
         "climate change",
         "global warming potential (GWP100)",
     )
-    REED_PATH = Path.home()/"OneDrive - 2.-0 LCA Consultants ApS"/"HorizonEurope"/"EU_REED_1277"
+    REED_PATH = Path.home()/"OneDrive - 2.-0 LCA Consultants ApS"/"Intranet - HorizonEurope"/"EU_REED_1277"
 
     BONSAI_PATH = REED_PATH/"data"/"dkea_exiobase_version"/"0.1.1"
 
