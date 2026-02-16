@@ -177,7 +177,7 @@ def group_records_by_event(
 
 def load_tool_operation_keys(
     tool_descriptions_path: Path
-) -> tuple[pd.DataFrame, pd.DataFrame]:
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """
     Load tool-operation mapping tables from the Excel workbook
     `tool_operation_combined.xlsx`.
@@ -234,17 +234,84 @@ def load_tool_operation_keys(
             .str.split("/")
         )
 
+        df_out["OP TYPE"] = df_out["OP TYPE"].astype(str).str.strip()
+
         df_out = df_out.explode("Tool_Number", ignore_index=True)
         df_out["Tool_Number"] = pd.to_numeric(df_out["Tool_Number"], errors="coerce")
 
         company_frames.append(df_out)
 
-    key_company_tools = pd.concat(company_frames, ignore_index=True)
+    key_company_tools_raw = pd.concat(company_frames, ignore_index=True)
+    
+    # Find ambugious keys: Same Tool_Number for same company maps to multiple OP TYPE values
+    amb_keys = (
+        key_company_tools_raw.groupby(["company", "Tool_Number"])["OP TYPE"]
+        .nunique()
+        .reset_index(name="n_op_types")
+        .query("n_op_types > 1")
+    )
 
-    # Load REED mapping sheet with original column names
-    key_reed_tools = pd.read_excel(xlsx_path, sheet_name="REED")
+    # Save ambiguous keys with their candidate OP TYPE values for reference
+    ambiguous_company_tools = (
+        key_company_tools_raw.merge(amb_keys[["company", "Tool_Number"]], on=["company", "Tool_Number"], how="inner")
+        .groupby(["company", "Tool_Number"])["OP TYPE"]
+        .apply(lambda s: sorted(set(s)))
+        .reset_index(name="op_type_candidates")
+        .sort_values(["company", "Tool_Number"])
+        .reset_index(drop=True)
+    )
 
-    return key_company_tools, key_reed_tools
+    # Drop ambiguous keys from the main mapping to avoid duplicate merges later.
+    if not amb_keys.empty:
+        # anti-join
+        key_company_tools = (
+            key_company_tools_raw.merge(amb_keys[["company", "Tool_Number"]], on=["company", "Tool_Number"], how="left", indicator=True)
+            .query("_merge == 'left_only'")
+            .drop(columns=["_merge"])
+        )
+    else:
+        key_company_tools = key_company_tools_raw.copy()
+
+    # one row per (company, Tool_Number) with OP TYPE
+    key_company_tools = (
+        key_company_tools.sort_values(["company", "Tool_Number", "OP TYPE"])
+        .drop_duplicates(["company", "Tool_Number"], keep="first")
+        .reset_index(drop=True)
+    )
+
+    # --- Load REED mapping ---
+    key_reed_tools_raw = pd.read_excel(xlsx_path, sheet_name="REED")
+
+    # Same procedure for REED mapping: Check for ambiguous OP TYPE → reed tool mappings and save them separately.
+    if {"OP TYPE", "reed tool"}.issubset(key_reed_tools_raw.columns):
+        amb_ops = (
+            key_reed_tools_raw.groupby("OP TYPE")["reed tool"]
+            .nunique()
+            .reset_index(name="n_reed_tools")
+            .query("n_reed_tools > 1")
+        )
+        ambiguous_reed = (
+            key_reed_tools_raw.merge(amb_ops[["OP TYPE"]], on="OP TYPE", how="inner")
+            .groupby("OP TYPE")["reed tool"]
+            .apply(lambda s: sorted(set(s)))
+            .reset_index(name="reed_tool_candidates")
+        )
+        
+        if not amb_ops.empty:
+            key_reed_tools = (
+                key_reed_tools_raw.merge(amb_ops[["OP TYPE"]], on="OP TYPE", how="left", indicator=True)
+                .query("_merge == 'left_only'")
+                .drop(columns=["_merge"])
+            )
+        else:
+            key_reed_tools = key_reed_tools_raw.copy()
+
+        key_reed_tools = key_reed_tools.drop_duplicates(["OP TYPE"], keep="first").reset_index(drop=True)
+
+    else:
+        key_reed_tools = key_reed_tools_raw
+
+    return key_company_tools, key_reed_tools, ambiguous_company_tools
 
 # Data analsysis functions
 
@@ -379,6 +446,7 @@ def build_final_df(
         key_company_tools[["company", "Tool_Number", "OP TYPE"]],
         on=["company", "Tool_Number"],
         how="left",
+        validate="many_to_one",
     )
 
     # Merge 2: add REED mapping based on OP TYPE
@@ -386,6 +454,7 @@ def build_final_df(
         key_reed_tools,
         on="OP TYPE",
         how="left",
+        validate="many_to_one",
         suffixes=("", "_reed"),
     )
 
@@ -409,7 +478,7 @@ def run_sensordata_analysis(
     tool_descriptions_path: Path,
     *,
     debug: bool = False,
-) -> tuple[pd.DataFrame, pd.DataFrame]:
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """
     End-to-end sensor data analysis pipeline up to and including build_final_df().
 
@@ -442,7 +511,7 @@ def run_sensordata_analysis(
     events = group_records_by_event(records)
 
     # 3) Load mapping keys
-    key_company_tools, key_reed_tools = load_tool_operation_keys(tool_descriptions_path)
+    key_company_tools, key_reed_tools, ambiguous_company_tools = load_tool_operation_keys(tool_descriptions_path)
 
     # 4) Build final dataframe
     final_df, event_summaries_df = build_final_df(
@@ -452,9 +521,7 @@ def run_sensordata_analysis(
         debug=debug,
     )
 
-    return final_df, event_summaries_df
-
-
+    return final_df, event_summaries_df, ambiguous_company_tools, key_company_tools, key_reed_tools
 
 #Other analysis functions
 def find_missing_op_type_tools(final_df: pd.DataFrame) -> pd.DataFrame:
@@ -575,3 +642,4 @@ def compute_event_totals(
     )
 
     return df_totals
+
