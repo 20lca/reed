@@ -2,8 +2,7 @@ This is a visualisation of the datamanagement of inserting sensordata into proce
 
 ```mermaid
 flowchart TD
-	loading-->setup&probing
-	setup&probing-->machining
-	Soraluce_machine-->machining
-	machining-->unloading	
+	Bonsai-->Reed_analysis.py
+	Reed_database-->Reed_analysis.py
+	Monitoring_data-->Reed_analysis.py	
 ```
