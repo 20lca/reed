@@ -460,7 +460,7 @@ def build_final_df(
 
     # Default REED tool when missing
     if "reed tool" in final_df.columns:
-        final_df["reed tool"] = final_df["reed tool"].fillna("machining, generic")
+        final_df["reed tool"] = final_df["reed tool"].fillna("generic machining, soraluce")
     else:
         # If key_reed_tools uses a different column name, fail loudly
         raise KeyError("Expected column 'reed tool' not found after merging key_reed_tools.")
@@ -566,14 +566,19 @@ def split_final_df_by_company_event(final_df):
 def sum_by_reed_tool(
     df,
     group_cols=("company", "event_id", "reed tool"),
-    cols_to_sum=("energy_consumption", "hours", "seconds")
+    cols_to_sum=("energy_consumption", "hours")
 ):
-    return (
+    result = (
         df
-        .drop(columns=["Tool_Number"], errors="ignore")
+        .drop(columns=["Tool_Number", "seconds"], errors="ignore")
         .groupby(list(group_cols), as_index=False)
         .agg({col: "sum" for col in cols_to_sum})
     )
+
+    result["Power_Active"] = result["energy_consumption"] / result["hours"]
+    result = result.set_index(["company", "event_id", "reed tool"]).sort_index()
+
+    return result
 
 def compute_event_totals(
     final_df: pd.DataFrame,
