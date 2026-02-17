@@ -3,6 +3,9 @@
 import pandas as pd
 from collections import defaultdict
 import bw2data as bd
+import bw2calc as bc
+import numpy as np
+import bw_processing as bwp
 
 def find_activities_by_name(db, needle: str, exact=False):
     needle = str(needle)
@@ -19,6 +22,18 @@ def electricity_input_amount(activity, electricity_act):
             return float(exc["amount"])
     return 0.0
 
+def get_product_id_for_activity(activity):
+    """
+    Returns a product-row identifier for scenario tables.
+    For normal activities: rp_exchange().output.id
+    For IO table activities: fall back to activity.id
+    """
+    try:
+        return activity.rp_exchange().output.id
+    except ValueError:
+        # IO Table activities don't have rp_exchange
+        return activity.id
+
 def build_scenarios_from_power_active(tool_energy_by_company_and_event, found, electricity_act):
     
     df_reset = tool_energy_by_company_and_event.reset_index()
@@ -30,21 +45,26 @@ def build_scenarios_from_power_active(tool_energy_by_company_and_event, found, e
 
     pa_by_tool = df_reset.set_index("reed tool")["Power_Active"]
 
+    electricity_product_id = get_product_id_for_activity(electricity_act)
+
     rows = []
     original_vals = []
     swapped_vals = []
 
     for tool, matches in found.items():
-        # kun hour-aktiviteter
         hour_matches = [a for a in matches if a.get("unit") == "hour"]
         if not hour_matches:
             continue
 
         act = hour_matches[0]
+
+        if tool not in pa_by_tool.index:
+            continue
+
         orig = electricity_input_amount(act, electricity_act)
         swap = float(pa_by_tool.loc[tool])* 3.6e-6 #kWh --> TJ
 
-        rows.append((electricity_act.id, act.id))
+        rows.append((electricity_product_id, act.id))
         original_vals.append(orig)
         swapped_vals.append(swap)
 
@@ -107,11 +127,11 @@ def build_consumer_input_scenarios_from_hours(
             consumers = input_to_consumers.get(tool_act.id, [])
             if not consumers:
                 continue
-            
-            if company.lower() not in consumer.get("name", "").lower():
-                continue
 
             for consumer, exc in consumers:
+                if company.lower() not in consumer.get("name", "").lower():
+                    continue
+
                 if exc.get("unit") != "hour":
                     continue
 
@@ -137,14 +157,10 @@ def describe_scenarios(scenarios_df):
 
         rows.append({
             "product_name": product.get("name"),
-            "product_ref": product.get("reference product"),
             "product_unit": product.get("unit"),
-            "product_location": product.get("location"),
 
             "activity_name": activity.get("name"),
-            "activity_ref": activity.get("reference product"),
             "activity_unit": activity.get("unit"),
-            "activity_location": activity.get("location"),
         })
 
     readable = pd.DataFrame(rows)
@@ -153,3 +169,63 @@ def describe_scenarios(scenarios_df):
     readable = readable.join(scenarios_df.reset_index(drop=True))
 
     return readable
+
+def lcia_for_activity_with_scenario(
+    activity,
+    method,
+    scenario_df,
+    scenario_col=None,
+    amount=1.0,
+    use_arrays=True,
+):
+    """
+    Run LCIA for `amount` of `activity`, applying technosphere overrides from `scenario_df`.
+
+    Parameters
+    ----------
+    activity : bw2data Activity
+    method : tuple
+        LCIA method tuple, e.g. config.lcia_gwp100
+    scenario_df : pd.DataFrame
+        Index: MultiIndex (product, activity) -> technosphere indices
+        Columns: includes scenario values. If scenario_col is None, uses the last column.
+    scenario_col : str | None
+        Which column in scenario_df to apply (e.g. "VWR_12345"). If None, uses last column.
+    amount : float
+        Demand amount for the activity.
+    use_arrays : bool
+        Keep True for performance with bw_processing.
+
+    Returns
+    -------
+    score : float
+    lca : bc.LCA
+        The LCA object (so you can do contribution analysis afterwards if you want).
+    """
+    # pick scenario column
+    if scenario_col is None:
+        # assume columns are like ["original", "<scenario_name>"] or multiple scenarios
+        scenario_col = [c for c in scenario_df.columns if c != "original"][-1]
+
+    # Build datapackage with the scenario column only
+    dp = bwp.create_datapackage(sequential=True)
+
+    indices = scenario_df.index.values.astype(bwp.INDICES_DTYPE)
+    values = scenario_df[[scenario_col]].values  # shape (n, 1) for sequential
+
+    dp.add_dynamic_array(
+        matrix="technosphere_matrix",
+        indices_array=indices,
+        interface=values,
+        flip_array=np.full(indices.shape[0], True),
+    )
+
+    # Prepare FU and base data objects (includes biosphere + characterization etc.)
+    fu, data_objs, _ = bd.prepare_lca_inputs({activity: amount}, method=method)
+
+    # Run LCA with scenario datapackage appended
+    lca = bc.LCA(demand=fu, method=method, data_objs=data_objs + [dp], use_arrays=use_arrays)
+    lca.lci()
+    lca.lcia()
+
+    return lca.score, lca
