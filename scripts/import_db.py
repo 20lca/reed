@@ -39,11 +39,6 @@ def main(path_to_tidy_files:Path=None):
 
     db_name = config.BONSAI_NAME
     
-    # import biosphere 3 if needed
-    bi.remote.install_project(project_key="ecoinvent-3.10-biosphere",
-                              project_name=config.PROJECT_NAME,
-                              overwrite_existing=True)
-    
     bd.projects.set_current('reed')
     # delete previous versions of the database
     try:
