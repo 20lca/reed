@@ -23,10 +23,10 @@ def main(path_to_tidy_files:Path=None):
     # select folder where the tidy version of exiobase is
     if path_to_tidy_files is None:
         
-        exio_tidy_path = config.BONSAI_PATH
+        bonsai_tidy_path = config.BONSAI_PATH
         #assert exio_tidy_path.exists(),exio_tidy_path
     else:
-        exio_tidy_path = path_to_tidy_files
+        bonsai_tidy_path = path_to_tidy_files
 
     # overwrite with environment variable if existing
     _bonsai_folder = os.environ.get('reed_bonsai_folder')
