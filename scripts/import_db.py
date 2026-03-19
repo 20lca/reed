@@ -35,9 +35,7 @@ def main(path_to_tidy_files:Path=None):
         
         exio_tidy_path = Path(_bonsai_folder)
 
-    assert exio_tidy_path.is_dir()
-
-    
+    assert bonsai_tidy_path.is_dir()
 
     db_name = config.BONSAI_NAME
     
@@ -60,9 +58,9 @@ def main(path_to_tidy_files:Path=None):
 
     mapping_b3 = mapb3()
 
-    exiobase4 = BonsaiImporter(exio_tidy_path,db_name,b3mapping=mapping_b3)
-    exiobase4.apply_strategies()
-    exiobase4.write_database()
+    bonsai_v2_1_3 = BonsaiImporter(bonsai_tidy_path,db_name,b3mapping=mapping_b3)
+    bonsai_v2_1_3.apply_strategies()
+    bonsai_v2_1_3.write_database()
 
 if __name__ == '__main__':
     main()
