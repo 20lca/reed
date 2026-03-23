@@ -20,6 +20,24 @@ def main(path_to_tidy_files:Path=None):
     """
     config = utils.Config()
 
+    db_name = config.BONSAI_NAME
+
+    # delete previous versions of the database
+    try:
+        del bd.databases[f'{db_name} biosphere']
+        del bd.databases[db_name]
+        bd.Database(db_name).delete(warn=False)
+        bd.Database(f'{db_name} biosphere').delete(warn=False)
+    except KeyError:
+        print('db not there')
+
+    # import biosphere 3 if needed
+    bi.remote.install_project(project_key="ecoinvent-3.10-biosphere",
+                              project_name=config.PROJECT_NAME,
+                              overwrite_existing=True)
+    
+    bd.projects.set_current('reed')
+
     # select folder where the tidy version of exiobase is
     if path_to_tidy_files is None:
         
@@ -33,28 +51,9 @@ def main(path_to_tidy_files:Path=None):
 
     if _bonsai_folder is not None:
         
-        exio_tidy_path = Path(_bonsai_folder)
+        bonsai_tidy_path = Path(_bonsai_folder)
 
     assert bonsai_tidy_path.is_dir()
-
-    db_name = config.BONSAI_NAME
-
-    # import biosphere 3 if needed
-    bi.remote.install_project(project_key="ecoinvent-3.10-biosphere",
-                              project_name=config.PROJECT_NAME,
-                              overwrite_existing=True)
-    
-    
-    bd.projects.set_current('reed')
-    # delete previous versions of the database
-    try:
-        del bd.databases[f'{db_name} biosphere']
-        del bd.databases[db_name]
-        bd.Database(db_name).delete(warn=False)
-        bd.Database(f'{db_name} biosphere').delete(warn=False)
-    except KeyError:
-        print('db not there')
-
 
 
     mapping_b3 = mapb3()
