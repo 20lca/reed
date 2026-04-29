@@ -229,3 +229,74 @@ def lcia_for_activity_with_scenario(
     lca.lcia()
 
     return lca.score, lca
+
+def find_subactivity_by_name_fragment(parent_activity, name_fragment):
+    """
+    Find technosphere input activities under a parent activity
+    where the input activity name contains `name_fragment`.
+    """
+    name_fragment = name_fragment.lower()
+
+    matches = []
+
+    for exc in parent_activity.technosphere():
+        input_act = exc.input
+
+        if name_fragment in input_act.get("name", "").lower():
+            matches.append(input_act)
+
+    return matches
+
+def build_consumer_input_scenarios_from_hours_for_activity(
+    tool_energy_by_company_and_event,
+    found,
+    consumer_activity,
+):
+    """
+    Builds a scenario DataFrame that replaces tool-hour inputs inside one specific
+    consumer activity, e.g. the A3 activity used by KOMATSU total.
+
+    Rows are:
+        (product, activity) = (tool_activity.id, consumer_activity.id)
+
+    This means:
+        replace the amount of tool_activity consumed by consumer_activity.
+    """
+
+    df_reset = tool_energy_by_company_and_event.reset_index()
+
+    company = df_reset["company"].iloc[0]
+    event_id = df_reset["event_id"].iloc[0]
+    scenario_name = f"{company}_{event_id}"
+
+    hours_by_tool = df_reset.set_index("reed tool")["hours"]
+
+    rows = []
+    original_vals = []
+    swapped_vals = []
+
+    for tool, matches in found.items():
+        if tool not in hours_by_tool.index:
+            continue
+
+        new_hours = float(hours_by_tool.loc[tool])
+
+        tool_acts = [a for a in matches if a.get("unit") == "hour"]
+
+        for tool_act in tool_acts:
+            for exc in consumer_activity.technosphere():
+                if exc.input.id != tool_act.id:
+                    continue
+
+                orig = float(exc["amount"])
+
+                rows.append((tool_act.id, consumer_activity.id))
+                original_vals.append(orig)
+                swapped_vals.append(new_hours)
+
+    scenarios = pd.DataFrame(
+        {"original": original_vals, scenario_name: swapped_vals},
+        index=pd.MultiIndex.from_tuples(rows, names=["product", "activity"]),
+    )
+
+    return scenarios
