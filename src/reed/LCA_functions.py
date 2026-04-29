@@ -1,3 +1,5 @@
+import pandas as pd
+
 def lca_score(process_dict, method):
     results = []
     for name, process in process_dict.items():
