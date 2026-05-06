@@ -95,9 +95,9 @@ def main(path_to_tidy_files: Path | None = None):
 
     mapping_b3 = define_b3_map()
 
-    bonsai_v2_1_3 = BonsaiImporter(bonsai_tidy_path, db_name, b3mapping=mapping_b3)
-    bonsai_v2_1_3.apply_strategies()
-    bonsai_v2_1_3.write_database()
+    bonsai_v2_1_6 = BonsaiImporter(bonsai_tidy_path, db_name, b3mapping=mapping_b3)
+    bonsai_v2_1_6.apply_strategies()
+    bonsai_v2_1_6.write_database()
 
 
 if __name__ == "__main__":
