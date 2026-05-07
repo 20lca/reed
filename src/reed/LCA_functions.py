@@ -1,6 +1,8 @@
 import pandas as pd
+import bw2analyzer as bwa
 
-def lca_score(process_dict, method):
+
+def lca_score(process_dict:dict, method:tuple)->pd.DataFrame:
     results = []
     for name, process in process_dict.items():
         lca = process.lca(method)
@@ -25,28 +27,3 @@ def run_contribution_analysis(demand_object,
         as_dataframe=True,
     )
 
-def plot_contribution(df,
-                      title='Contribution Analysis',
-                      xlabel='CO2 eq. emissions (kg)',
-                      drop_parent=True):
-    df_plot = df.copy()
-
-    # Drop the parent (the demand itself)
-    if drop_parent:
-        # Heuristic: parent is usually the one with maximum score
-        parent_score = df_plot['score'].max()
-        df_plot = df_plot[df_plot['score'] < parent_score]
-
-    # Sort descending by contribution
-    df_plot = df_plot.sort_values(by='score', ascending=False)
-
-    f, ax = plt.subplots(figsize=(5, 2))
-    sns.barplot(y='name', x='score', data=df_plot, ax=ax)
-
-    ax.set(
-        title=title,
-        xlabel=xlabel,
-        ylabel=''
-    )
-    plt.tight_layout()
-    plt.show()
