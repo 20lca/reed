@@ -4,13 +4,15 @@ import os
 import bw2data as bd
 import bw2io as bi
 
+from bw2io.importers import ExcelImporter
 from bw2io.importers.bonsai import BonsaiImporter
 from bw2io.strategies.bonsai import mapb3
 
-from reed import utils
+from reed.utils import CONFIG
 
 # from ademe.bonsai_importer import BonsaiImporter
 # from ademe.bonsai_strategies import mapb3
+
 
 def define_b3_map() -> dict:
 
@@ -39,7 +41,7 @@ def define_b3_map() -> dict:
     return map_bonsai_b3
 
 
-def main(path_to_tidy_files: Path | None = None):
+def import_bonsai(path_to_tidy_files: Path | None = None):
     """Creates a Brightway project called as defined in the config under utils.,
     and creates the following databases:
     - exiobase4 (technosphere activities/products)
@@ -51,9 +53,8 @@ def main(path_to_tidy_files: Path | None = None):
     the name reed_bonsai_folder exists, it will override the value in the config
     file.
     """
-    config = utils.Config()
 
-    db_name = config.BONSAI_NAME
+    db_name = CONFIG.BONSAI_NAME
 
     # delete previous versions of the database
     try:
@@ -67,7 +68,7 @@ def main(path_to_tidy_files: Path | None = None):
     # import biosphere 3 if needed
     bi.remote.install_project(
         project_key="ecoinvent-3.10-biosphere",
-        project_name=config.PROJECT_NAME,
+        project_name=CONFIG.PROJECT_NAME,
         overwrite_existing=True,
     )
 
@@ -76,7 +77,7 @@ def main(path_to_tidy_files: Path | None = None):
     # select folder where the tidy version of exiobase is
     if path_to_tidy_files is None:
 
-        bonsai_tidy_path = config.BONSAI_PATH
+        bonsai_tidy_path = CONFIG.BONSAI_PATH
         # assert bonsai_tidy_path.exists(),bonsai_tidy_path
     else:
         bonsai_tidy_path = path_to_tidy_files
@@ -101,4 +102,23 @@ def main(path_to_tidy_files: Path | None = None):
 
 
 if __name__ == "__main__":
-    main()
+    import_bonsai()
+
+
+def import_reed_db():
+
+    importer = ExcelImporter(
+        CONFIG.REED_PATH / "Model" / "REED_model_20260506.xlsx",
+    )
+    importer.apply_strategies()
+    importer.match_database(fields=["name", "unit", "location"])
+    importer.match_database(
+        db_name=CONFIG.BONSAI_NAME, fields=["name", "unit", "location", "activity type"]
+    )
+    importer.match_database(
+        db_name=bd.config.biosphere, fields=["name", "categories", "unit"]
+    )
+
+    assert importer.all_linked
+
+    importer.write_database()
