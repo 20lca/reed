@@ -12,8 +12,8 @@ dependencies = [
   "pandas",
   "jupyterlab",
   "pytest",
-  "geopandas",
-  "geodatasets",
+  # "geopandas",
+  # "geodatasets",
   "country_converter",
   "pypardiso",
   "bw2io @ git+https://github.com/mfastudillo/brightway2-io.git@io",
@@ -21,10 +21,10 @@ dependencies = [
   "bw2data",
   "bw2calc>=2.0.dev18",
   "bw2parameters>=1.1.0",
-  "polyviz",
-  "d3blocks @ git+https://github.com/romainsacchi/d3blocks.git",
+  # "polyviz",
+  # "d3blocks @ git+https://github.com/romainsacchi/d3blocks.git",
   "plotly",
-
+  "pydantic",
 ]
 
 requires-python = ">=3.10"
