@@ -8,6 +8,11 @@ allow-direct-references = true
 [project]
 name = "reed"
 version = "0.0.2"
+
+requires-python = ">=3.10"
+
+readme = "README.md"
+
 dependencies = [
   "pandas",
   "jupyterlab",
@@ -23,10 +28,10 @@ dependencies = [
   "bw2parameters>=1.1.0",
   # "polyviz",
   # "d3blocks @ git+https://github.com/romainsacchi/d3blocks.git",
-  "plotly",
+  
   "pydantic",
 ]
 
-requires-python = ">=3.10"
+[project.optional-dependencies]
 
-readme = "README.md"
+vis = ["plotly","matplotlib","seaborn"]
