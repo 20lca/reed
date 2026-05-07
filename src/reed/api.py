@@ -12,12 +12,20 @@ class BrightwayAPI:
         self.PROJECT_NAME = CONFIG.PROJECT_NAME
         
     def import_databases(self):
+        """imports BONSAI and a foreground database with machinig operations.
+        """
 
         import_bonsai(CONFIG.BONSAI_PATH)
         import_reed_db()
 
         
     def calc_komatsu(self)->pd.DataFrame:
+        """calculates the average global warming impact of the piece produced by
+        KOMATSU, dissagregated in a EPD style contribution.
+
+        Returns:
+            pd.DataFrame: _description_
+        """
     
         reed = bd.Database("reed")
         assert len(reed)>0,"reed database is empty"
@@ -65,3 +73,16 @@ class BrightwayAPI:
         result_table = lca_score(goimek_processes,CONFIG.lcia_gwp100)
 
         return result_table
+    
+    def simulate(simulation_data:dict)->pd.DataFrame:
+
+        # simulate the footprint given simulation data
+        raise NotImplementedError
+    
+    def evaluate(sensor_data:dict):
+
+
+        # given some sensor data from the Soraluce machine, we provide a footprint
+        # of the manufactured piece at that given moment.
+
+        raise NotImplementedError
