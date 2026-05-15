@@ -17,6 +17,9 @@ dependencies = [
   "pandas",
   "jupyterlab",
   "pytest",
+  "fastapi",
+  "python-multipart",
+  "uvicorn",
   # "geopandas",
   # "geodatasets",
   "country_converter",
@@ -30,6 +33,7 @@ dependencies = [
   # "d3blocks @ git+https://github.com/romainsacchi/d3blocks.git",
   
   "pydantic",
+  "pydantic-settings",
 ]
 
 [project.optional-dependencies]

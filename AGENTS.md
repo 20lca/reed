@@ -12,14 +12,25 @@
 - The notebooks under `scripts/` are the current end-to-end reference flows, including generation of DPP-like JSON output.
 
 ## Target Service Architecture
-- `Ingestion API`: accepts calculation requests, validates payloads, assigns identifiers, persists job metadata, and returns immediately with async job status.
+- `Ingestion API`: the v1 REST adapter that accepts calculation requests, validates payloads, assigns identifiers, persists job metadata, and returns immediately with async job status.
 - `Calculation Worker`: consumes queued jobs, orchestrates sensor aggregation, process mapping, scenario construction, Brightway execution, and output serialization.
 - `Temporary Result Store`: stores job metadata and completed DPP-like result artifacts as files; records are removed after confirmed downstream retrieval or expiry.
 - `Retrieval API`: exposes job status and completed result artifacts for the downstream DPP service.
 
+## Architecture Pattern
+- The core service shape is `ingestion adapter -> NormalizedEventPayload -> async job/worker -> LCA pipeline -> result store -> retrieval API`.
+- `REST` is the committed v1 ingestion adapter and the only public submission interface in the first implementation.
+- `MQTT` is a possible future ingestion adapter, not a competing calculation architecture.
+- All ingestion adapters must produce the same `NormalizedEventPayload` contract before work is queued.
+
+## Normalized Worker Input
+- `NormalizedEventPayload` is the worker-facing contract shared by all ingestion adapters.
+- It includes `company`, `event_id`, and the event-bounded sensor measurements required by the current aggregation and process-mapping logic.
+- Transport metadata may be retained separately for diagnostics or tracing, but it must not alter calculation semantics.
+
 ## Runtime Flow
-1. A client submits a sensor calculation payload to the ingestion API.
-2. The API validates the request, computes a payload checksum, allocates `job_id` and `result_id`, and stores job metadata.
+1. A client submits a sensor calculation payload through the REST ingestion adapter.
+2. The adapter validates the request, normalizes it into `NormalizedEventPayload`, computes a payload checksum, allocates `job_id` and `result_id`, and stores job metadata.
 3. The API enqueues work and returns `202 Accepted`.
 4. The worker loads the payload, runs the sensor-to-event aggregation flow, maps tool data to REED processes, and builds Brightway scenario overrides.
 5. The worker executes the LCA calculation and serializes the completed result into the DPP-like JSON contract.
@@ -29,11 +40,25 @@
 
 ## Boundaries and Rules
 - Keep Brightway and LCA orchestration out of the HTTP layer.
+- Keep transport-specific concerns out of the LCA pipeline.
+- The REST adapter owns request validation, normalization, idempotent submission, and job creation.
+- Any future MQTT adapter must own topic subscription, buffering, message ordering handling, duplicate delivery handling, and event assembly before submitting work.
+- Both REST and MQTT adapters must produce the same `NormalizedEventPayload` for the worker.
 - Keep file-backed persistence behind a small storage interface so it can be replaced later.
 - Keep DPP output formatting isolated behind a serializer/adapter; do not let downstream JSON shape leak into core calculation code.
 - Treat notebooks as reference material only; production behavior must live in importable Python modules.
 - Avoid introducing database or queue dependencies until file-backed async execution becomes a proven bottleneck.
 - Preserve deterministic behavior for a given `(company, event_id, payload checksum)` input set.
+
+## Public v1 Interfaces
+- `POST /v1/calculations`
+- `GET /v1/calculations/{job_id}`
+- `GET /v1/results/{result_id}`
+- `POST /v1/results/{result_id}/consume`
+
+## Architecture Decision Note
+- The current repo favors event-level ingestion over stream-first ingestion because `src/reed/sensordata_analysis.py` already expects grouped event data and performs aggregation/mapping on bounded event inputs rather than raw continuous telemetry.
+- REST is therefore the practical v1 choice: it matches the current batch/event processing model without forcing the worker or Brightway pipeline to absorb transport-specific streaming concerns.
 
 ## Recommended Module Direction
 - `src/reed/api/`: FastAPI routes, request/response schemas, and HTTP error handling.

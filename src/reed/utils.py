@@ -1,4 +1,3 @@
-from dataclasses import dataclass
 from pathlib import Path
 from pydantic_settings import BaseSettings,SettingsConfigDict
 
@@ -20,6 +19,10 @@ class Config(BaseSettings):
 
     PROJECT_NAME :str = 'reed'
     BONSAI_NAME : str = 'BONSAI_V2.1.6'
+    TOOL_DESCRIPTIONS_PATH: Path = REED_PATH
+    STORAGE_ROOT: Path = Path("storage")
+    RESULT_TTL_HOURS: int = 24
+    WORKER_POLL_INTERVAL_SECONDS: float = 0.2
 
 
 CONFIG = Config()

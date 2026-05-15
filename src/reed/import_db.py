@@ -1,9 +1,8 @@
-from pathlib import Path
 import os
+from pathlib import Path
 
 import bw2data as bd
 import bw2io as bi
-
 from bw2io.importers import ExcelImporter
 from bw2io.importers.bonsai import BonsaiImporter
 from bw2io.strategies.bonsai import mapb3
@@ -76,7 +75,6 @@ def import_bonsai(path_to_tidy_files: Path | None = None):
 
     # select folder where the tidy version of exiobase is
     if path_to_tidy_files is None:
-
         bonsai_tidy_path = CONFIG.BONSAI_PATH
         # assert bonsai_tidy_path.exists(),bonsai_tidy_path
     else:
@@ -86,7 +84,6 @@ def import_bonsai(path_to_tidy_files: Path | None = None):
     _bonsai_folder = os.environ.get("reed_bonsai_folder")
 
     if _bonsai_folder is not None:
-
         bonsai_tidy_path = Path(_bonsai_folder)
 
     assert bonsai_tidy_path.is_dir()
@@ -99,10 +96,6 @@ def import_bonsai(path_to_tidy_files: Path | None = None):
     bonsai_v2_1_6 = BonsaiImporter(bonsai_tidy_path, db_name, b3mapping=mapping_b3)
     bonsai_v2_1_6.apply_strategies()
     bonsai_v2_1_6.write_database()
-
-
-if __name__ == "__main__":
-    import_bonsai()
 
 
 def import_reed_db():
@@ -122,3 +115,7 @@ def import_reed_db():
     assert importer.all_linked
 
     importer.write_database()
+
+
+if __name__ == "__main__":
+    import_bonsai()

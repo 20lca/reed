@@ -9,12 +9,14 @@ Initial v1 specification for the REED sensor-to-LCA API service
 - The first implementation prioritizes correctness and separable boundaries over infrastructure complexity.
 
 ## Chosen Defaults
-- API style: HTTP/JSON.
+- API style: HTTP/JSON REST for v1 ingestion.
 - Runtime style: async submission with background processing.
 - Service stack: FastAPI, Pydantic, Python worker abstraction in-process or file-backed queue wrapper, existing `reed` modules for calculation.
 - Persistence: temporary local files only.
 - Stored artifact: DPP-like JSON only, plus job/result metadata sidecars.
 - Retrieval semantics: result retrieval is non-destructive; explicit consume deletes the record.
+- Internal worker contract: a transport-agnostic `NormalizedEventPayload`.
+- MQTT ingestion is deferred to a future phase unless the sensor/gateway landscape becomes concrete.
 
 ## Core User Flow
 1. A producer submits a sensor calculation payload.
@@ -27,9 +29,11 @@ Initial v1 specification for the REED sensor-to-LCA API service
 
 ## API Contract
 
+The v1 public interface is REST-only. MQTT topics, broker layout, and streaming adapter contracts are future design work and are not part of the current public API.
+
 ### `POST /v1/calculations`
 - Purpose: submit a new calculation request.
-- Behavior: validate payload, compute checksum, apply idempotency rule, create metadata, enqueue work, return immediately.
+- Behavior: validate payload, normalize it into `NormalizedEventPayload`, compute checksum, apply idempotency rule, create metadata, enqueue work, return immediately.
 - Response: `202 Accepted`.
 
 Example response:
@@ -77,6 +81,12 @@ Example response:
 - `sensor_data` must carry the measurements needed to reproduce the current aggregation and mapping flow from `sensordata_analysis.py`.
 - Optional metadata may include product identifier, country, timestamps, and source-system references.
 - Unknown fields should be rejected in v1 unless explicitly approved for passthrough.
+
+## Normalized Event Payload
+- `NormalizedEventPayload` is the worker-facing contract shared by all ingestion adapters.
+- It includes `company`, `event_id`, and the event-bounded sensor measurements required for the current aggregation and mapping logic.
+- Transport metadata may be stored separately for tracing or diagnostics, but it must not alter calculation semantics.
+- If MQTT is added later, it must normalize into this same contract before enqueueing work.
 
 Example request shape:
 
@@ -129,12 +139,23 @@ Example request shape:
 
 ## Processing Pipeline
 - Normalize and validate incoming payloads.
-- Adapt sensor input into the current event-processing model from `sensordata_analysis.py`.
+- Convert accepted transport input into `NormalizedEventPayload`.
+- Adapt the normalized event payload into the current event-processing model from `sensordata_analysis.py`.
 - Aggregate power and time data by event and REED tool.
 - Build scenario substitutions using the helpers in `swapping_data.py`.
 - Execute Brightway-based LCA calculations with the configured method from `utils.Config`.
 - Serialize the output into the DPP-like JSON contract.
 - Persist final metadata and result artifact.
+
+MQTT, if introduced later, should remain a thin ingestion adapter in front of this same pipeline unless the business explicitly requires native stream-first processing.
+
+## Future MQTT Path
+- MQTT is a future transport adapter, not a separate calculation architecture.
+- Before MQTT can reuse the worker pipeline, the system must define a topic contract and broker-side integration model.
+- The adapter must handle out-of-order messages and duplicate delivery before producing `NormalizedEventPayload`.
+- The adapter must buffer or sessionize messages into event-level payloads because the current calculation flow expects bounded event data, not raw telemetry streams.
+- The adapter must define event-complete rules so the worker only receives complete calculation inputs.
+- The adapter must specify retry and reconnect behavior so transport faults do not corrupt event assembly or idempotency.
 
 ## Failure Handling
 - Validation failures are rejected at request time with 4xx responses.
@@ -162,6 +183,7 @@ Example request shape:
 - No relational database.
 - No external queue infrastructure.
 - No push delivery to the DPP partner.
+- No MQTT broker, topic schema, or native stream-first processing model.
 - No broad authentication/authorization design in this first spec.
 - No attempt to make notebooks production runtime dependencies.
 
