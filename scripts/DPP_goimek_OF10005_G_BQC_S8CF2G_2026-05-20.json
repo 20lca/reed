@@ -25,7 +25,7 @@
             "GoodsHandoverAddress": {
               "Country": "ES"
             },
-            "PublicationDate": "2026-05-06"
+            "PublicationDate": "2026-05-20"
           },
           {
             "PcfCalculationMethods": [
@@ -46,7 +46,7 @@
             "GoodsHandoverAddress": {
               "Country": "ES"
             },
-            "PublicationDate": "2026-05-06"
+            "PublicationDate": "2026-05-20"
           },
           {
             "PcfCalculationMethods": [
@@ -54,7 +54,7 @@
                 "PcfCalculationMethod": "ISO 14044"
               }
             ],
-            "PCF in kg CO2eq": 189.4,
+            "PCF in kg CO2eq": 215.3,
             "ProcessName": "GOIMEK total A3",
             "ReferenceValueForCalculation": "unit",
             "QuantityOfMeasureForCalculation": 1,
@@ -67,7 +67,7 @@
             "GoodsHandoverAddress": {
               "Country": "ES"
             },
-            "PublicationDate": "2026-05-06"
+            "PublicationDate": "2026-05-20"
           },
           {
             "PcfCalculationMethods": [
@@ -75,7 +75,7 @@
                 "PcfCalculationMethod": "ISO 14044"
               }
             ],
-            "PCF in kg CO2eq": 17236.7,
+            "PCF in kg CO2eq": 17262.6,
             "ProcessName": "GOIMEK total A1-A3",
             "ReferenceValueForCalculation": "unit",
             "QuantityOfMeasureForCalculation": 1,
@@ -88,7 +88,7 @@
             "GoodsHandoverAddress": {
               "Country": "ES"
             },
-            "PublicationDate": "2026-05-06"
+            "PublicationDate": "2026-05-20"
           }
         ]
       }
