@@ -575,7 +575,7 @@ def build_final_df(
     key_reed_tools:
         DataFrame keyed by "OP TYPE" and containing "reed tool" (and potentially other columns).
     debug:
-        If True, prints diagnostics and drops into breakpoint() on missing Power_Active.
+        If True, prints diagnostics on missing Power_Active.
         If False, raises ValueError on missing Power_Active.
 
     Returns
@@ -604,7 +604,6 @@ def build_final_df(
                     r0 = records[0]
                     if isinstance(r0, dict):
                         print("first record keys:", list(r0.keys()))
-                breakpoint()
             else:
                 raise ValueError(msg)
 
@@ -703,7 +702,7 @@ def run_sensordata_analysis(
     tool_descriptions_path : Path
         Folder containing tool_operation_combined.xlsx.
     debug : bool
-        Enables verbose diagnostics and breakpoints in downstream functions.
+        Enables verbose diagnostics in downstream functions.
 
     Returns
     -------

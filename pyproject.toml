@@ -5,6 +5,15 @@ build-backend = "hatchling.build"
 [tool.hatch.metadata]
 allow-direct-references = true
 
+[tool.hatch.build.targets.wheel]
+packages = ["src/reed"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"src/reed/tool_operation_combined.xlsx" = "reed/tool_operation_combined.xlsx"
+
+[tool.hatch.build.targets.sdist.force-include]
+"src/reed/tool_operation_combined.xlsx" = "src/reed/tool_operation_combined.xlsx"
+
 [project]
 name = "reed"
 version = "0.0.2"
