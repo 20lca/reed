@@ -1,6 +1,19 @@
 import pandas as pd
+import bw2analyzer as bwa
 
-def lca_score(process_dict, method):
+
+def lca_score(process_dict:dict, method:tuple)->pd.DataFrame:
+    """_summary_
+
+    Args:
+        process_dict (dict): _description_
+        method (tuple): _description_
+
+    Returns:
+        pd.DataFrame: _description_
+    """
+    #TODO: optimize, for example, re-using the LCA object
+
     results = []
     for name, process in process_dict.items():
         lca = process.lca(method)
@@ -11,6 +24,28 @@ def lca_score(process_dict, method):
             "Climate Impact (kg CO2eq)": lca.score
         })
 
+    return pd.DataFrame(results)
+
+def lca_score2(demand,lcia_method):
+
+    lca_exists = False
+    results = []
+    # TODO we don't need the name of the activity in the dict. we use directly
+    # the activity name
+    for process in demand.values():
+
+        if not lca_exists:
+            lca = process.lca(lcia_method)
+            lca_exists = True
+        else:
+            lca.redo_lcia({process.id:1})
+
+        results.append({
+            "Process": process["name"],
+            "Location": process.get('location'),
+            "Functional Unit": process.get('unit'),
+            "Climate Impact (kg CO2eq)": lca.score
+        })
     return pd.DataFrame(results)
 
 def run_contribution_analysis(demand_object,
@@ -25,28 +60,3 @@ def run_contribution_analysis(demand_object,
         as_dataframe=True,
     )
 
-def plot_contribution(df,
-                      title='Contribution Analysis',
-                      xlabel='CO2 eq. emissions (kg)',
-                      drop_parent=True):
-    df_plot = df.copy()
-
-    # Drop the parent (the demand itself)
-    if drop_parent:
-        # Heuristic: parent is usually the one with maximum score
-        parent_score = df_plot['score'].max()
-        df_plot = df_plot[df_plot['score'] < parent_score]
-
-    # Sort descending by contribution
-    df_plot = df_plot.sort_values(by='score', ascending=False)
-
-    f, ax = plt.subplots(figsize=(5, 2))
-    sns.barplot(y='name', x='score', data=df_plot, ax=ax)
-
-    ax.set(
-        title=title,
-        xlabel=xlabel,
-        ylabel=''
-    )
-    plt.tight_layout()
-    plt.show()

@@ -8,12 +8,20 @@ allow-direct-references = true
 [project]
 name = "reed"
 version = "0.0.2"
+
+requires-python = ">=3.10"
+
+readme = "README.md"
+
 dependencies = [
   "pandas",
   "jupyterlab",
   "pytest",
-  "geopandas",
-  "geodatasets",
+  "fastapi",
+  "python-multipart",
+  "uvicorn",
+  # "geopandas",
+  # "geodatasets",
   "country_converter",
   "pypardiso",
   "bw2io @ git+https://github.com/mfastudillo/brightway2-io.git@io",
@@ -21,12 +29,13 @@ dependencies = [
   "bw2data",
   "bw2calc>=2.0.dev18",
   "bw2parameters>=1.1.0",
-  "polyviz",
-  "d3blocks @ git+https://github.com/romainsacchi/d3blocks.git",
-  "plotly",
-
+  # "polyviz",
+  # "d3blocks @ git+https://github.com/romainsacchi/d3blocks.git",
+  
+  "pydantic",
+  "pydantic-settings",
 ]
 
-requires-python = ">=3.10"
+[project.optional-dependencies]
 
-readme = "README.md"
+vis = ["plotly","matplotlib","seaborn"]

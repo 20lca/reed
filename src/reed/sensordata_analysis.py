@@ -4,6 +4,7 @@
 # 0) Imports and setup
 from __future__ import annotations
 import tarfile
+from io import BytesIO
 from pathlib import Path
 from reed import utils
 from collections import defaultdict, Counter
@@ -12,6 +13,17 @@ import re
 from typing import Dict, List, Tuple
 import numpy as np
 import pandas as pd
+from reed.pipeline.models import (
+    ArchiveMemberMetadata,
+    NormalizedEventPayload,
+    NormalizedSensorRecord,
+    ParsedArchiveSensorData,
+    StoredArchiveReference,
+)
+
+
+LCA_REQUIRED_COLUMNS = {"timestamp", "Tool_Number", "Power_Active"}
+LCA_RELEVANT_COLUMNS = ["timestamp", "Tool_Number", "Power_Active", "Energy_Total"]
 
 
 # 1) Sensordata import functions
@@ -159,6 +171,202 @@ def load_monitoring_records(
         print("\nTotal CSV files imported:", len(all_records))
 
     return all_records
+
+
+def _infer_company_candidate(name: str) -> str | None:
+    parts = [part.strip() for part in name.split(" - ")]
+    if parts and parts[0]:
+        candidate = re.sub(r"[^A-Za-z0-9_-]", "", parts[0]).lower()
+        return candidate or None
+    return None
+
+
+def infer_company_from_archive(
+    archive_name: str,
+    member_names: list[str],
+) -> tuple[str, str | None]:
+    candidates: list[tuple[str, str | None]] = []
+
+    for member_name in member_names:
+        parent = Path(member_name).parent
+        top_level = parent.parts[0] if parent.parts else ""
+        candidate = _infer_company_candidate(top_level)
+        if candidate:
+            machine_name = None
+            split_parts = [p.strip() for p in top_level.split(" - ")]
+            if len(split_parts) > 1:
+                machine_name = " - ".join(split_parts[1:]) or None
+            candidates.append((candidate, machine_name))
+
+    archive_candidate = _infer_company_candidate(Path(archive_name).name)
+    if archive_candidate:
+        candidates.append((archive_candidate, None))
+
+    unique_companies = {company for company, _ in candidates}
+    if len(unique_companies) != 1:
+        raise ValueError(
+            "Could not infer a single company from archive or member names"
+        )
+
+    company = unique_companies.pop()
+    machine_name = next(
+        (machine for candidate, machine in candidates if candidate == company and machine),
+        None,
+    )
+    return company, machine_name
+
+
+def _filter_lca_columns(df: pd.DataFrame) -> pd.DataFrame | None:
+    if not LCA_REQUIRED_COLUMNS.issubset(df.columns):
+        return None
+    return df[[column for column in LCA_RELEVANT_COLUMNS if column in df.columns]].copy()
+
+
+def load_records_from_tarfile(
+    tf: tarfile.TarFile,
+    *,
+    archive_name: str,
+    debug: bool = False,
+) -> list[dict]:
+    csv_members = [member for member in tf.getmembers() if member.name.lower().endswith(".csv")]
+    if not csv_members:
+        raise ValueError(f"No CSV files found in archive {archive_name}")
+
+    company, machine_name = infer_company_from_archive(
+        archive_name,
+        [member.name for member in csv_members],
+    )
+
+    lca_records: list[dict] = []
+    ignored_members: list[str] = []
+
+    for csv_member in csv_members:
+        csv_basename = Path(csv_member.name).name
+        event_id, measurement_type = parse_event_and_type_from_csv_filename(csv_basename)
+        extracted = tf.extractfile(csv_member)
+        if extracted is None:
+            if debug:
+                print(f"Warning — could not extract {csv_member.name} from {archive_name}")
+            continue
+
+        df = pd.read_csv(extracted)
+        filtered = _filter_lca_columns(df)
+        if filtered is None:
+            ignored_members.append(csv_member.name)
+            continue
+
+        lca_records.append(
+            {
+                "company": company,
+                "machine_name": machine_name,
+                "event_id": event_id,
+                "measurement_type": measurement_type,
+                "tar_path": archive_name,
+                "csv_name": csv_member.name,
+                "csv_basename": csv_basename,
+                "data": filtered,
+            }
+        )
+
+    if not lca_records:
+        if ignored_members:
+            raise ValueError(
+                f"No CSV matching the expected LCA schema was found in archive {archive_name}"
+            )
+        raise ValueError(f"No readable CSV records were found in archive {archive_name}")
+
+    event_ids = {record["event_id"] for record in lca_records}
+    if len(event_ids) != 1:
+        raise ValueError(
+            f"Archive {archive_name} contains multiple event ids: {sorted(event_ids)}"
+        )
+
+    return lca_records
+
+
+def load_records_from_archive_bytes(
+    archive_bytes: bytes,
+    *,
+    archive_name: str,
+    debug: bool = False,
+) -> list[dict]:
+    try:
+        with tarfile.open(fileobj=BytesIO(archive_bytes), mode="r:*") as tf:
+            return load_records_from_tarfile(tf, archive_name=archive_name, debug=debug)
+    except tarfile.TarError as exc:
+        raise ValueError(f"Uploaded file is not a valid tar archive: {archive_name}") from exc
+
+
+def load_records_from_archive_path(
+    archive_path: Path | str,
+    *,
+    archive_name: str | None = None,
+    debug: bool = False,
+) -> list[dict]:
+    path = Path(archive_path)
+    try:
+        with tarfile.open(path, mode="r:*") as tf:
+            return load_records_from_tarfile(
+                tf,
+                archive_name=archive_name or path.name,
+                debug=debug,
+            )
+    except tarfile.TarError as exc:
+        raise ValueError(f"Stored archive is not a valid tar archive: {path}") from exc
+
+
+def flatten_archive_records(records: list[dict]) -> list[NormalizedSensorRecord]:
+    normalized_records: list[NormalizedSensorRecord] = []
+    for record in records:
+        frame = record["data"].copy()
+        for row in frame.to_dict(orient="records"):
+            timestamp = pd.to_datetime(row["timestamp"], utc=True)
+            normalized_records.append(
+                NormalizedSensorRecord(
+                    timestamp=timestamp.isoformat(),
+                    Tool_Number=float(row["Tool_Number"]),
+                    Power_Active=float(row["Power_Active"]),
+                    Energy_Total=(
+                        None
+                        if pd.isna(row.get("Energy_Total"))
+                        else float(row["Energy_Total"])
+                    ),
+                )
+            )
+    return normalized_records
+
+
+def parse_uploaded_archive(
+    archive_bytes: bytes,
+    *,
+    archive_name: str,
+    product: str | None = None,
+    country: str | None = None,
+    transport_metadata: dict[str, object] | None = None,
+) -> NormalizedEventPayload:
+    records = load_records_from_archive_bytes(archive_bytes, archive_name=archive_name)
+    company = records[0]["company"]
+    event_id = records[0]["event_id"]
+    return NormalizedEventPayload(
+        company=company,
+        event_id=event_id,
+        sensor_data=ParsedArchiveSensorData(records=flatten_archive_records(records)),
+        archive=StoredArchiveReference(
+            original_filename=Path(archive_name).name,
+            sha256="",
+        ),
+        source_members=[
+            ArchiveMemberMetadata(
+                member_name=record["csv_name"],
+                csv_basename=record["csv_basename"],
+                measurement_type=record["measurement_type"],
+            )
+            for record in records
+        ],
+        product=product,
+        country=country,
+        transport_metadata=transport_metadata or {},
+    )
 
 
 def group_records_by_event(
