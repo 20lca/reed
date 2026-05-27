@@ -100,8 +100,8 @@ jobs:
             ./ \
             "$SSH_USER@$SSH_HOST:$REMOTE_RELEASE_DIR/"
 
-          # The heredoc is unquoted so all $VARS are expanded here on the
-          # runner before the script is sent to the remote shell.
+          # The heredoc is unquoted so $VARS expand on the runner;
+          # \$(...) escapes are evaluated on the remote shell.
           ssh "$SSH_USER@$SSH_HOST" bash << ENDSSH
             set -euo pipefail
 
@@ -123,7 +123,8 @@ jobs:
             # Atomic switch to the new release
             ln -sfn "$REMOTE_RELEASE_DIR" "$REMOTE_CURRENT_LINK"
 
-            # Restart the application service
+            # Restart the system service.
+            # Requires the targeted sudoers rule described in deploy/README.md.
             sudo systemctl restart reed
 
             # Keep only the 5 most recent releases
