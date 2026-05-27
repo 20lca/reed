@@ -104,11 +104,32 @@ Files that must survive across releases live in the shared directory:
 
 | Path | Contents |
 |---|---|
-| `<deployment-dir>/shared/data/` | Brightway databases, model files |
+| `<deployment-dir>/shared/data/` | Brightway databases (`BONSAI_V2.1.6/`) |
 | `<deployment-dir>/shared/storage/` | Uploaded archives and job results |
 | `<deployment-dir>/shared/venv/` | Python virtual environment |
+| `<deployment-dir>/shared/REED_model_*.xlsx` | REED foreground model spreadsheet |
 
 Each release symlinks `data/` into itself; the venv is shared across all releases.
+
+### Uploading data files manually
+
+The following files are **not** deployed by CI and must be uploaded to the server once
+(and again whenever they change).
+
+`REED_PATH` in `reed.service` points to `<deployment-dir>/shared/`, so the application
+resolves paths as follows:
+
+| File | Expected path on server |
+|---|---|
+| REED model spreadsheet | `<deployment-dir>/shared/REED_model_*.xlsx` |
+| BONSAI database | `<deployment-dir>/shared/data/BONSAI_V2.1.6/` |
+
+Upload them from your local machine with `rsync`:
+
+```bash
+rsync -az REED_model_v1.xlsx  deploy@<server-ip>:<deployment-dir>/shared/
+rsync -az BONSAI_V2.1.6/      deploy@<server-ip>:<deployment-dir>/shared/data/BONSAI_V2.1.6/
+```
 
 ---
 

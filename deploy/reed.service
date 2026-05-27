@@ -15,8 +15,9 @@ ExecStart=/home/bonsai/reed/shared/venv/bin/uvicorn reed.api.main:app \
     --port 8765 \
     --root-path /reed
 
-# Keep storage outside the release tree so it survives deployments
+# Keep storage and data outside the release tree so they survive deployments
 Environment=STORAGE_ROOT=/home/bonsai/reed/shared/storage
+Environment=REED_PATH=/home/bonsai/reed/shared
 
 Restart=on-failure
 RestartSec=5
