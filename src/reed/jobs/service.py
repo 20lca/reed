@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from hashlib import sha256
 from datetime import UTC, datetime, timedelta
+from hashlib import sha256
 from threading import Event, Lock, Thread
 from uuid import uuid4
 
@@ -22,7 +22,13 @@ class ResultNotReadyError(RuntimeError):
 
 
 class CalculationService:
-    def __init__(self, *, storage: FileStorage, pipeline: ReedCalculationPipeline, settings: Config):
+    def __init__(
+        self,
+        *,
+        storage: FileStorage,
+        pipeline: ReedCalculationPipeline,
+        settings: Config,
+    ):
         self.storage = storage
         self.pipeline = pipeline
         self.settings = settings
@@ -63,7 +69,9 @@ class CalculationService:
             storage_path=None,
             sha256=checksum,
         )
-        return self._submit_payload(payload=parsed, checksum=checksum, archive_content=content)
+        return self._submit_payload(
+            payload=parsed, checksum=checksum, archive_content=content
+        )
 
     def _submit_payload(
         self,
@@ -79,7 +87,8 @@ class CalculationService:
                 job.company == payload.company
                 and job.event_id == payload.event_id
                 and job.checksum == checksum
-                and job.status in {JobStatus.accepted, JobStatus.processing, JobStatus.completed}
+                and job.status
+                in {JobStatus.accepted, JobStatus.processing, JobStatus.completed}
                 and job.consumed_at is None
             ):
                 return SubmissionResult(

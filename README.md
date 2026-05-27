@@ -1,28 +1,47 @@
 # reed
 work related to the REED Horizon Europe project
 
-Open anaconda prompt and go to repository
+Go to the repository:
 
-```bash
-cd ['repository path']
+```powershell
+cd C:\path\to\reed
 ```
 
-create conda virtual environment named `reed`
+Create and activate a Python virtual environment:
 
-```bash
-conda env create -f environment.yml
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
 ```
 
-activate it and install reed package:
+Install the package in editable mode:
 
-```bash
-conda activate reed
-pip install -e .
+```powershell
+python -m pip install -e .
 ```
 
-setup the project. This installs a biosphere database and one functioning version of bonsai
+Configure local paths with dotenv:
 
-```bash
-cd scripts
-python import_db.py
+```powershell
+copy .env.example .env
 ```
+
+Then edit `.env` and set `REED_PATH` to the root folder that contains the REED `Model` and `data` folders:
+
+```dotenv
+REED_PATH=C:\path\to\EU_REED_1277
+STORAGE_ROOT=storage
+```
+
+`BONSAI_PATH` is derived automatically as `REED_PATH/data/BONSAI_V2.1.6` unless you set `BONSAI_PATH` explicitly.
+`STORAGE_ROOT` is where submitted payloads, job metadata, archives, and temporary results are stored.
+
+Start the API:
+
+```powershell
+uvicorn reed.api.main:app --reload
+```
+
+On startup, the API checks the configured Brightway project and imports the required BONSAI and REED databases if they are missing.
+
+Conda is optional. `environment.yml` is kept for legacy notebook workflows and heavier geospatial/visualization dependencies, but it is not required for the REST service.

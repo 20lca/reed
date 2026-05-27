@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from reed.api.routes import router
+from reed.brightway_api import ensure_brightway_databases
 from reed.jobs.service import CalculationService
 from reed.pipeline.service import ReedCalculationPipeline
 from reed.storage.files import FileStorage
@@ -19,6 +20,7 @@ def create_app(
 ) -> FastAPI:
     settings = settings or Config()
     storage = storage or FileStorage(settings.STORAGE_ROOT)
+    bootstrap_brightway = pipeline is None
     pipeline = pipeline or ReedCalculationPipeline(settings)
 
     service = CalculationService(
@@ -30,6 +32,8 @@ def create_app(
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         app.state.calculation_service = service
+        if settings.IMPORT_BRIGHTWAY_ON_STARTUP and bootstrap_brightway:
+            ensure_brightway_databases(settings)
         service.start_worker()
         try:
             yield

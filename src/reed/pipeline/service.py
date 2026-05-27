@@ -57,8 +57,12 @@ class ReedCalculationPipeline:
         else:
             records = payload.sensor_data.records
             if not records:
-                raise PipelineError("validation_error", "sensor_data.records must not be empty")
-            frame = pd.DataFrame([record.model_dump(exclude_none=True) for record in records])
+                raise PipelineError(
+                    "validation_error", "sensor_data.records must not be empty"
+                )
+            frame = pd.DataFrame(
+                [record.model_dump(exclude_none=True) for record in records]
+            )
             archive_records = [
                 {
                     "company": payload.company,
@@ -112,16 +116,24 @@ class ReedCalculationPipeline:
             raise PipelineError("bonsai_database_error", str(exc)) from exc
 
         product_name = payload.product or f"{payload.company.upper()} total"
-        product_activity = self._get_product_activity(reed, product_name, payload.country)
-        country = payload.country or product_activity.get("location") or "GB"
+        product_activity = self._get_product_activity(
+            reed, product_name, payload.country
+        )
+        country = payload.country or product_activity.get("location")
 
         try:
             a3_activity = find_subactivity_by_name_fragment(product_activity, "A3")[0]
         except IndexError as exc:
-            raise PipelineError("a3_not_found", f"A3 phase not found for {product_name}") from exc
+            raise PipelineError(
+                "a3_not_found", f"A3 phase not found for {product_name}"
+            ) from exc
 
-        tools = tool_energy_by_company_and_event.index.get_level_values("reed tool").unique()
-        found = {tool: find_activities_by_name(reed, tool, exact=False) for tool in tools}
+        tools = tool_energy_by_company_and_event.index.get_level_values(
+            "reed tool"
+        ).unique()
+        found = {
+            tool: find_activities_by_name(reed, tool, exact=False) for tool in tools
+        }
 
         electricity = self._get_electricity_activity(bonsai, country)
         scenarios = build_scenarios_from_power_active(
@@ -160,7 +172,9 @@ class ReedCalculationPipeline:
                         {input_activity: input_amount},
                         method=self.settings.lcia_gwp100,
                     )
-                    lca = bc.LCA(fu, method=self.settings.lcia_gwp100, data_objs=data_objs)
+                    lca = bc.LCA(
+                        fu, method=self.settings.lcia_gwp100, data_objs=data_objs
+                    )
                     lca.lci()
                     lca.lcia()
                     total_score += lca.score
@@ -189,7 +203,9 @@ class ReedCalculationPipeline:
         try:
             return reed_db.get(name=product_name)
         except Exception as exc:
-            raise PipelineError("product_not_found", f"Product '{product_name}' not found") from exc
+            raise PipelineError(
+                "product_not_found", f"Product '{product_name}' not found"
+            ) from exc
 
     def _get_electricity_activity(self, bonsai_db, country: str):
         activity_name = "production of electricity (market for)"
