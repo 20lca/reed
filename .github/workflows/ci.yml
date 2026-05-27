@@ -1,0 +1,133 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  SSH_HOST: "162.55.167.96"
+  SSH_USER: "deploy"
+  REMOTE_BASE: "/home/bonsai/reed"
+
+jobs:
+  test:
+    if: >
+      github.event_name == 'pull_request' ||
+      (github.event_name == 'push' && github.ref_name == 'main')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install test dependencies
+        # Only the lightweight deps needed to run the API tests.
+        # The heavy scientific stack (bw2data, bw2calc, bw2io, pypardiso…)
+        # is never imported by the FakePipeline test path.
+        run: |
+          pip install \
+            fastapi "uvicorn[standard]" \
+            "pydantic>=2" pydantic-settings \
+            pandas numpy \
+            python-multipart \
+            pytest httpx
+          pip install -e . --no-deps
+      - run: pytest tests/ -v
+
+  deploy:
+    if: github.event_name == 'push' && github.ref_name == 'main'
+    needs: [test]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup SSH
+        env:
+          PRIVATE_KEY_B64: ${{ secrets.WEB_SERVER_PRIVATE_KEY_B64 }}
+          KNOWN_HOSTS: ${{ secrets.KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          printf '%s' "$PRIVATE_KEY_B64" | base64 -d > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 644 ~/.ssh/known_hosts
+          cat > ~/.ssh/config <<'EOF'
+          Host *
+            IdentityFile ~/.ssh/id_ed25519
+            IdentitiesOnly yes
+            StrictHostKeyChecking yes
+          EOF
+          chmod 600 ~/.ssh/config
+
+      - name: Deploy release
+        run: |
+          set -euo pipefail
+
+          RELEASE="$(date +%Y%m%d-%H%M%S)"
+          REMOTE_RELEASES_DIR="$REMOTE_BASE/releases"
+          REMOTE_RELEASE_DIR="$REMOTE_RELEASES_DIR/$RELEASE"
+          REMOTE_CURRENT_LINK="$REMOTE_BASE/current"
+          REMOTE_SHARED_VENV="$REMOTE_BASE/shared/venv"
+          REMOTE_SHARED_DATA="$REMOTE_BASE/shared/data"
+
+          # Create release and shared directories on the server
+          ssh "$SSH_USER@$SSH_HOST" \
+            "mkdir -p '$REMOTE_RELEASES_DIR' '$REMOTE_RELEASE_DIR' '$REMOTE_SHARED_DATA'"
+
+          # Sync source code to the new release directory.
+          # Excludes dev/notebook artefacts not needed at runtime.
+          rsync -az --delete \
+            --exclude='.git' \
+            --exclude='__pycache__' \
+            --exclude='*.pyc' \
+            --exclude='*.egg-info' \
+            --exclude='.eggs' \
+            --exclude='tests/' \
+            --exclude='docs/' \
+            --exclude='old_scripts/' \
+            --exclude='scripts/' \
+            --exclude='environment.yml' \
+            --exclude='PLAN.md' \
+            --exclude='AGENTS.md' \
+            ./ \
+            "$SSH_USER@$SSH_HOST:$REMOTE_RELEASE_DIR/"
+
+          # The heredoc is unquoted so $VARS expand on the runner;
+          # \$(...) escapes are evaluated on the remote shell.
+          ssh "$SSH_USER@$SSH_HOST" bash << ENDSSH
+            set -euo pipefail
+
+            # Bootstrap shared venv on first deploy
+            if [ ! -x "$REMOTE_SHARED_VENV/bin/pip" ]; then
+              python3 -m venv "$REMOTE_SHARED_VENV"
+              "$REMOTE_SHARED_VENV/bin/pip" install --quiet --upgrade pip
+            fi
+
+            # Install / upgrade the package and its dependencies.
+            # On subsequent deploys most packages are already cached in the
+            # shared venv, so this is fast unless pyproject.toml changed.
+            "$REMOTE_SHARED_VENV/bin/pip" install --quiet -e "$REMOTE_RELEASE_DIR"
+
+            # Link shared data directory into the release
+            rm -rf "$REMOTE_RELEASE_DIR/data"
+            ln -s  "$REMOTE_SHARED_DATA" "$REMOTE_RELEASE_DIR/data"
+
+            # Atomic switch to the new release
+            ln -sfn "$REMOTE_RELEASE_DIR" "$REMOTE_CURRENT_LINK"
+
+            # Restart the system service.
+            # Requires the targeted sudoers rule described in deploy/README.md.
+            sudo systemctl restart reed
+
+            # Keep only the 5 most recent releases
+            find "$REMOTE_RELEASES_DIR" -mindepth 1 -maxdepth 1 -type d \
+              | sort | head -n -5 | xargs -r rm -rf
+          ENDSSH
