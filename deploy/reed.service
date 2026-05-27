@@ -1,0 +1,25 @@
+[Unit]
+Description=REED FastAPI service
+After=network.target
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/home/bonsai/reed/current
+
+# The shared venv provides all runtime deps; the editable install inside it
+# points to the current release directory.
+ExecStart=/home/bonsai/reed/shared/venv/bin/uvicorn reed.api.main:app \
+    --host 127.0.0.1 \
+    --port 8765 \
+    --root-path /reed
+
+# Keep storage outside the release tree so it survives deployments
+Environment=STORAGE_ROOT=/home/bonsai/reed/shared/storage
+
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
