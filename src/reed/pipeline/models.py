@@ -19,7 +19,7 @@ class NormalizedSensorRecord(BaseModel):
 class ParsedArchiveSensorData(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    records: list[NormalizedSensorRecord]
+    records: list[NormalizedSensorRecord] = Field(default_factory=list)
 
 
 class ArchiveMemberMetadata(BaseModel):

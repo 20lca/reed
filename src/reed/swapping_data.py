@@ -7,6 +7,35 @@ import bw2calc as bc
 import numpy as np
 import bw_processing as bwp
 
+def _build_scenario_datapackage(scenario_df: "pd.DataFrame", scenario_col: str | None = None):
+    """Build a bw_processing sequential datapackage from a scenario DataFrame.
+
+    Parameters
+    ----------
+    scenario_df : pd.DataFrame
+        MultiIndex (product, activity) with an 'original' column and one or more
+        scenario columns.
+    scenario_col : str | None
+        Which scenario column to apply.  Defaults to the last non-'original' column.
+
+    Returns
+    -------
+    bw_processing.DatapackageBase
+    """
+    if scenario_col is None:
+        scenario_col = [c for c in scenario_df.columns if c != "original"][-1]
+    dp = bwp.create_datapackage(sequential=True)
+    indices = scenario_df.index.values.astype(bwp.INDICES_DTYPE)
+    values = scenario_df[[scenario_col]].values  # shape (n, 1) for sequential mode
+    dp.add_dynamic_array(
+        matrix="technosphere_matrix",
+        indices_array=indices,
+        interface=values,
+        flip_array=np.full(indices.shape[0], True),
+    )
+    return dp
+
+
 def find_activities_by_name(db, needle: str, exact=False):
     needle = str(needle)
     if exact:
@@ -177,6 +206,7 @@ def lcia_for_activity_with_scenario(
     scenario_col=None,
     amount=1.0,
     use_arrays=True,
+    dp=None,
 ):
     """
     Run LCIA for `amount` of `activity`, applying technosphere overrides from `scenario_df`.
@@ -195,6 +225,10 @@ def lcia_for_activity_with_scenario(
         Demand amount for the activity.
     use_arrays : bool
         Keep True for performance with bw_processing.
+    dp : bw_processing.DatapackageBase | None
+        Pre-built scenario datapackage.  When provided the datapackage is not rebuilt
+        from ``scenario_df``, saving repeated matrix construction across multiple calls
+        that share the same scenario.  Build once with ``_build_scenario_datapackage()``.
 
     Returns
     -------
@@ -202,23 +236,9 @@ def lcia_for_activity_with_scenario(
     lca : bc.LCA
         The LCA object (so you can do contribution analysis afterwards if you want).
     """
-    # pick scenario column
-    if scenario_col is None:
-        # assume columns are like ["original", "<scenario_name>"] or multiple scenarios
-        scenario_col = [c for c in scenario_df.columns if c != "original"][-1]
-
-    # Build datapackage with the scenario column only
-    dp = bwp.create_datapackage(sequential=True)
-
-    indices = scenario_df.index.values.astype(bwp.INDICES_DTYPE)
-    values = scenario_df[[scenario_col]].values  # shape (n, 1) for sequential
-
-    dp.add_dynamic_array(
-        matrix="technosphere_matrix",
-        indices_array=indices,
-        interface=values,
-        flip_array=np.full(indices.shape[0], True),
-    )
+    # Build datapackage if not supplied by caller
+    if dp is None:
+        dp = _build_scenario_datapackage(scenario_df, scenario_col=scenario_col)
 
     # Prepare FU and base data objects (includes biosphere + characterization etc.)
     fu, data_objs, _ = bd.prepare_lca_inputs({activity: amount}, method=method)

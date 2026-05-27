@@ -96,6 +96,7 @@ class ReedCalculationPipeline:
             raise PipelineError("dependency_missing", str(exc)) from exc
 
         from reed.swapping_data import (
+            _build_scenario_datapackage,
             build_consumer_input_scenarios_from_hours_for_activity,
             build_scenarios_from_power_active,
             find_activities_by_name,
@@ -148,10 +149,24 @@ class ReedCalculationPipeline:
         frames = [frame for frame in (scenarios, consumer_scenarios) if not frame.empty]
         full_scenario = pd.concat(frames) if frames else None
 
+        # Build the scenario datapackage once; all three phases share the same overrides.
+        # The sequential-mode cursor only advances on matrix build, so sharing is safe.
+        scenario_dp = (
+            _build_scenario_datapackage(full_scenario) if full_scenario is not None else None
+        )
+
         def lcia_score_for_named_input(
             name_fragment: str,
             scenario_df: pd.DataFrame | None = None,
-        ) -> float:
+            *,
+            dp=None,
+            lca_obj=None,
+        ) -> tuple[float, object]:
+            """Score all technosphere inputs of product_activity matching name_fragment.
+
+            Returns (total_score, lca_obj) so the caller can thread the LCA object
+            through subsequent phases, reusing the already-factorised technosphere matrix.
+            """
             matches = [
                 exc
                 for exc in product_activity.technosphere()
@@ -168,29 +183,46 @@ class ReedCalculationPipeline:
                 input_activity = exc.input
                 input_amount = float(exc["amount"])
                 if scenario_df is None:
+                    # No scenario: always create a fresh LCA object (matrices differ per phase)
                     fu, data_objs, _ = bd.prepare_lca_inputs(
                         {input_activity: input_amount},
                         method=self.settings.lcia_gwp100,
                     )
-                    lca = bc.LCA(
+                    lca_obj = bc.LCA(
                         fu, method=self.settings.lcia_gwp100, data_objs=data_objs
                     )
-                    lca.lci()
-                    lca.lcia()
-                    total_score += lca.score
-                else:
-                    score, _ = lcia_for_activity_with_scenario(
+                    lca_obj.lci()
+                    lca_obj.lcia()
+                    total_score += lca_obj.score
+                elif lca_obj is None:
+                    # First scenario call: build the full LCA object with the shared dp
+                    score, lca_obj = lcia_for_activity_with_scenario(
                         activity=input_activity,
                         method=self.settings.lcia_gwp100,
                         scenario_df=scenario_df,
                         amount=input_amount,
+                        dp=dp,
                     )
                     total_score += score
-            return total_score
+                else:
+                    # Subsequent scenario calls: reuse the factorised technosphere matrix.
+                    # lca.lci(demand=...) skips load_lci_data() because technosphere_matrix
+                    # already exists; only the demand vector and linear solve are repeated.
+                    lca_obj.lci(demand={input_activity: input_amount})
+                    lca_obj.lcia()
+                    total_score += lca_obj.score
 
-        score_a1 = lcia_score_for_named_input("A1", full_scenario)
-        score_a2 = lcia_score_for_named_input("A2", full_scenario)
-        score_a3 = lcia_score_for_named_input("A3", full_scenario)
+            return total_score, lca_obj
+
+        score_a1, lca_obj = lcia_score_for_named_input(
+            "A1", full_scenario, dp=scenario_dp
+        )
+        score_a2, lca_obj = lcia_score_for_named_input(
+            "A2", full_scenario, dp=scenario_dp, lca_obj=lca_obj
+        )
+        score_a3, lca_obj = lcia_score_for_named_input(
+            "A3", full_scenario, dp=scenario_dp, lca_obj=lca_obj
+        )
         return score_a1, score_a2, score_a3, product_name, country
 
     def _get_product_activity(self, reed_db, product_name: str, country: str | None):
