@@ -27,18 +27,8 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-      - name: Install test dependencies
-        # Only the lightweight deps needed to run the API tests.
-        # The heavy scientific stack (bw2data, bw2calc, bw2io, pypardiso…)
-        # is never imported by the FakePipeline test path.
-        run: |
-          pip install \
-            fastapi "uvicorn[standard]" \
-            "pydantic>=2" pydantic-settings \
-            pandas numpy \
-            python-multipart \
-            pytest httpx
-          pip install -e . --no-deps
+      - name: Install dependencies
+        run: pip install -e .
       - run: pytest tests/ -v
 
   deploy:
