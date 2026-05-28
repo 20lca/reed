@@ -231,3 +231,45 @@ def test_archive_missing_power_active_is_rejected(storage_root: Path):
         response = post_archive(client, filename=filename, content=content)
         assert response.status_code == 400
         assert "expected LCA schema" in response.json()["detail"]
+
+
+def test_real_pipeline_bootstraps_brightway_before_worker(
+    monkeypatch: pytest.MonkeyPatch, storage_root: Path
+):
+    settings = Config(
+        STORAGE_ROOT=storage_root / "storage",
+        WORKER_POLL_INTERVAL_SECONDS=3600,
+        RESULT_TTL_HOURS=24,
+    )
+    calls: list[str] = []
+
+    monkeypatch.setattr(
+        "reed.api.main.ensure_brightway_databases",
+        lambda received_settings: calls.append("bootstrap"),
+    )
+    monkeypatch.setattr(
+        "reed.api.main.CalculationService.start_worker",
+        lambda self: calls.append("start_worker"),
+    )
+    monkeypatch.setattr("reed.api.main.CalculationService.stop_worker", lambda self: None)
+
+    app = create_app(settings=settings)
+
+    with TestClient(app):
+        pass
+
+    assert calls == ["bootstrap", "start_worker"]
+
+
+def test_fake_pipeline_skips_brightway_bootstrap(
+    monkeypatch: pytest.MonkeyPatch, storage_root: Path
+):
+    client, _ = create_test_client(storage_root)
+
+    monkeypatch.setattr(
+        "reed.api.main.ensure_brightway_databases",
+        lambda settings: pytest.fail("fake pipeline should not bootstrap Brightway"),
+    )
+
+    with client:
+        pass

@@ -15,9 +15,11 @@ ExecStart=/home/bonsai/reed/shared/venv/bin/uvicorn reed.api.main:app \
     --port 8765 \
     --root-path /reed
 
-# Keep storage and data outside the release tree so they survive deployments
-Environment=STORAGE_ROOT=/home/bonsai/reed/shared/storage
+# Keep storage and bw2data projects outside the release tree so they survive deployments
 Environment=REED_PATH=/home/bonsai/reed/shared
+Environment=STORAGE_ROOT=/home/bonsai/reed/shared/storage
+Environment=BRIGHTWAY2_DIR=/home/bonsai/reed/shared/data/brightway
+Environment=MPLCONFIGDIR=/home/bonsai/reed/shared/data/matplotlib
 
 Restart=on-failure
 RestartSec=5

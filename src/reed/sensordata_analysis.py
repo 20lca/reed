@@ -8,7 +8,7 @@ from io import BytesIO
 from pathlib import Path
 from reed import utils
 from collections import defaultdict, Counter
-from functools import reduce
+from functools import cache, reduce
 import re
 from typing import Dict, List, Tuple
 import numpy as np
@@ -350,7 +350,7 @@ def parse_uploaded_archive(
     return NormalizedEventPayload(
         company=company,
         event_id=event_id,
-        sensor_data=ParsedArchiveSensorData(records=flatten_archive_records(records)),
+        sensor_data=ParsedArchiveSensorData(),  # records left empty; archive is persisted to disk
         archive=StoredArchiveReference(
             original_filename=Path(archive_name).name,
             sha256="",
@@ -383,6 +383,7 @@ def group_records_by_event(
 
 # Import of tool keys functions
 
+@cache
 def load_tool_operation_keys(
     tool_descriptions_path: Path
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
@@ -575,7 +576,7 @@ def build_final_df(
     key_reed_tools:
         DataFrame keyed by "OP TYPE" and containing "reed tool" (and potentially other columns).
     debug:
-        If True, prints diagnostics and drops into breakpoint() on missing Power_Active.
+        If True, prints diagnostics on missing Power_Active.
         If False, raises ValueError on missing Power_Active.
 
     Returns
@@ -604,7 +605,6 @@ def build_final_df(
                     r0 = records[0]
                     if isinstance(r0, dict):
                         print("first record keys:", list(r0.keys()))
-                breakpoint()
             else:
                 raise ValueError(msg)
 
@@ -703,7 +703,7 @@ def run_sensordata_analysis(
     tool_descriptions_path : Path
         Folder containing tool_operation_combined.xlsx.
     debug : bool
-        Enables verbose diagnostics and breakpoints in downstream functions.
+        Enables verbose diagnostics in downstream functions.
 
     Returns
     -------
