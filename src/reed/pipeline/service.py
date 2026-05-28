@@ -208,7 +208,9 @@ class ReedCalculationPipeline:
                     # Subsequent scenario calls: reuse the factorised technosphere matrix.
                     # lca.lci(demand=...) skips load_lci_data() because technosphere_matrix
                     # already exists; only the demand vector and linear solve are repeated.
-                    lca_obj.lci(demand={input_activity: input_amount})
+                    # bw2calc requires an integer node ID as the demand key (not an Activity
+                    # object); see check_demand() in bw2calc/lca.py.
+                    lca_obj.lci(demand={input_activity.id: input_amount})
                     lca_obj.lcia()
                     total_score += lca_obj.score
 
