@@ -8,7 +8,7 @@ from io import BytesIO
 from pathlib import Path
 from reed import utils
 from collections import defaultdict, Counter
-from functools import reduce
+from functools import cache, reduce
 import re
 from typing import Dict, List, Tuple
 import numpy as np
@@ -350,7 +350,7 @@ def parse_uploaded_archive(
     return NormalizedEventPayload(
         company=company,
         event_id=event_id,
-        sensor_data=ParsedArchiveSensorData(records=flatten_archive_records(records)),
+        sensor_data=ParsedArchiveSensorData(),  # records left empty; archive is persisted to disk
         archive=StoredArchiveReference(
             original_filename=Path(archive_name).name,
             sha256="",
@@ -383,6 +383,7 @@ def group_records_by_event(
 
 # Import of tool keys functions
 
+@cache
 def load_tool_operation_keys(
     tool_descriptions_path: Path
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
