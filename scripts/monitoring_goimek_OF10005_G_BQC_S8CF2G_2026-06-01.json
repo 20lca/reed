@@ -1,0 +1,22 @@
+{
+  "product": "GOIMEK total",
+  "total_climate_impact_kg_co2eq": 16390.0867,
+  "machining_contributions": [
+    {
+      "operation": "generic machining, soraluce",
+      "amount": 6.523333
+    },
+    {
+      "operation": "drilling, soraluce",
+      "amount": 50.165556
+    },
+    {
+      "operation": "milling, soraluce",
+      "amount": 5.779167
+    },
+    {
+      "operation": "soraluce machine, Goimek",
+      "amount": 9.1e-05
+    }
+  ]
+}

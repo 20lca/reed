@@ -1,0 +1,22 @@
+{
+  "product": "KOMATSU total",
+  "total_climate_impact_kg_co2eq": 11705.529,
+  "machining_contributions": [
+    {
+      "operation": "milling, soraluce",
+      "amount": 8.063333
+    },
+    {
+      "operation": "boring, soraluce",
+      "amount": 3.198889
+    },
+    {
+      "operation": "generic machining, soraluce",
+      "amount": 26.7225
+    },
+    {
+      "operation": "soraluce machine, Komatsu",
+      "amount": 9.1e-05
+    }
+  ]
+}
