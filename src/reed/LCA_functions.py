@@ -122,3 +122,118 @@ def monitoring_footprint_output(product_activity, lcia_method, company="unknown"
     print(f"Exported to {filename}")
 
     return report
+
+def get_transport_activity(total_activity):
+    """Find the A2 transport activity by searching direct exchanges,
+    then one level deeper, matching on 'a2:' substring."""
+
+    # First, search direct exchanges
+    for exchange in total_activity.exchanges():
+        linked = exchange.input
+        if "a2:" in linked["name"].lower():
+            return linked
+
+    # If not found, search one level deeper through sub-activities
+    for exchange in total_activity.exchanges():
+        linked = exchange.input
+        try:
+            for sub_exchange in linked.exchanges():
+                sub_linked = sub_exchange.input
+                if "a2:" in sub_linked["name"].lower():
+                    return sub_linked
+        except Exception:
+            continue
+
+    raise ValueError(
+        f"No A2 transport activity found in exchanges of '{total_activity['name']}' "
+        f"or its direct sub-activities"
+    )
+
+
+def get_materials_activity(total_activity):
+    """Find the A1 material input activity by searching direct exchanges,
+    then one level deeper, matching on 'a1:' substring."""
+
+    # First, search direct exchanges
+    for exchange in total_activity.exchanges():
+        linked = exchange.input
+        if "a1:" in linked["name"].lower():
+            return linked
+
+    # If not found, search one level deeper through sub-activities
+    for exchange in total_activity.exchanges():
+        linked = exchange.input
+        try:
+            for sub_exchange in linked.exchanges():
+                sub_linked = sub_exchange.input
+                if "a1:" in sub_linked["name"].lower():
+                    return sub_linked
+        except Exception:
+            continue
+
+    raise ValueError(
+        f"No A1 material input activity found in exchanges of '{total_activity['name']}' "
+        f"or its direct sub-activities"
+    )
+
+
+def simulation_footprint_output(product_activity, lcia_method, company="unknown", event_id="unknown"):
+
+    # --- 1. Total impact --- capture score immediately before any redo_lcia
+    lca = product_activity.lca(lcia_method)
+    total_impact = round(lca.score, 4)  # <-- capture here, not later
+
+    # --- 2. A3: Machining — operation-level breakdown ---
+    machining_activity = get_machining_activity(product_activity)
+
+    machining_ca_df = bwa.utils.recursive_calculation_to_object(
+        machining_activity,
+        lcia_method=lcia_method,
+        max_level=1,
+        cutoff=0,
+        as_dataframe=True,
+    )
+
+    machining_operations = [
+        {
+            "operation": row["name"],
+            "amount": round(row["amount"], 6),
+        }
+        for _, row in machining_ca_df[machining_ca_df["parent"] == "root"].iterrows()
+    ]
+
+    # --- 3. A2: Transport — total impact only ---
+    transport_activity = get_transport_activity(product_activity)
+    lca.redo_lcia({transport_activity.id: 1})
+    transport_impact = round(lca.score, 4)
+
+    # --- 4. A1: Raw materials — total impact only ---
+    materials_activity = get_materials_activity(product_activity)
+    lca.redo_lcia({materials_activity.id: 1})
+    materials_impact = round(lca.score, 4)
+
+    # --- 5. Assemble report ---
+    report = {
+        "product": product_activity["name"],
+        "total_climate_impact_kg_co2eq": total_impact,  # <-- uses captured value
+        "a1_raw_materials": {
+            "total_kg_co2eq": materials_impact,
+        },
+        "a2_transport": {
+            "total_kg_co2eq": transport_impact,
+        },
+        "a3_machining": {
+            "total_kg_co2eq": round(
+                sum(op["amount"] for op in machining_operations), 4
+            ),
+            "operations": machining_operations,
+        },
+    }
+
+    # --- 6. Export to JSON ---
+    filename = f"simulation_{company}_{event_id}_{date.today().isoformat()}.json"
+    with open(filename, "w") as f:
+        json.dump(report, f, indent=2)
+    print(f"Exported to {filename}")
+
+    return report
