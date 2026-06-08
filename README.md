@@ -60,10 +60,13 @@ Submit a calculation request:
 curl.exe -X POST "$baseUrl/v1/calculations" `
   -F "archive=@$file;type=application/gzip" `
   -F "product=GOIMEK total" `
-  -F "country=ES"
+  -F "country=ES" `
+  -F "finished=false"
 ```
 
 The API returns `202 Accepted` with a `job_id` and `result_id`.
+
+Set `finished=false` (or `0`) for an in-progress production snapshot. Its result contains the current total climate impact and machining contributions. Set `finished=true` (or `1`) for the final upload to generate the full DPP result. `finished` defaults to `true` for backward compatibility.
 
 Poll the job until `status` is `completed` or `failed`:
 

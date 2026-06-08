@@ -49,6 +49,7 @@ class NormalizedEventPayload(BaseModel):
     source_members: list[ArchiveMemberMetadata] = Field(default_factory=list)
     product: str | None = None
     country: str | None = None
+    finished: bool = True
     transport_metadata: dict[str, Any] = Field(default_factory=dict)
 
     def checksum(self) -> str:

@@ -28,6 +28,7 @@ async def submit_calculation(
     archive: UploadFile = File(...),
     product: str | None = Form(default=None),
     country: str | None = Form(default=None),
+    finished: bool = Form(default=True),
     transport_metadata: str | None = Form(default=None),
 ):
     service = get_service(request)
@@ -52,6 +53,7 @@ async def submit_calculation(
             content=await archive.read(),
             product=product,
             country=country,
+            finished=finished,
             transport_metadata=metadata,
         )
     except ValueError as exc:

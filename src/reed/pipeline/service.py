@@ -8,6 +8,7 @@ import pandas as pd
 
 from reed.pipeline.models import NormalizedEventPayload
 from reed.serializers.dpp import make_dpp_output
+from reed.serializers.monitoring import make_monitoring_output
 from reed.utils import Config
 
 
@@ -24,9 +25,21 @@ class ReedCalculationPipeline:
 
     def run(self, payload: NormalizedEventPayload) -> dict[str, object]:
         tool_energy = self._aggregate_sensor_data(payload)
-        score_a1, score_a2, score_a3, product_name, country = self._calculate_scores(
-            payload, tool_energy
-        )
+        (
+            score_a1,
+            score_a2,
+            score_a3,
+            product_name,
+            country,
+            machining_contributions,
+        ) = self._calculate_scores(payload, tool_energy)
+        if not payload.finished:
+            return make_monitoring_output(
+                product=product_name,
+                total_climate_impact=score_a1 + score_a2 + score_a3,
+                machining_contributions=machining_contributions,
+            )
+
         return make_dpp_output(
             company=payload.company,
             event_id=payload.event_id,
@@ -88,7 +101,7 @@ class ReedCalculationPipeline:
         self,
         payload: NormalizedEventPayload,
         tool_energy_by_company_and_event: pd.DataFrame,
-    ) -> tuple[float, float, float, str, str]:
+    ) -> tuple[float, float, float, str, str, list[dict[str, object]]]:
         try:
             import bw2calc as bc
             import bw2data as bd
@@ -129,6 +142,15 @@ class ReedCalculationPipeline:
                 "a3_not_found", f"A3 phase not found for {product_name}"
             ) from exc
 
+        scenario_consumer = a3_activity
+        if not payload.finished:
+            from reed.LCA_functions import get_machining_activity
+
+            try:
+                scenario_consumer = get_machining_activity(product_activity)
+            except ValueError as exc:
+                raise PipelineError("machining_activity_not_found", str(exc)) from exc
+
         tools = tool_energy_by_company_and_event.index.get_level_values(
             "reed tool"
         ).unique()
@@ -143,7 +165,11 @@ class ReedCalculationPipeline:
         consumer_scenarios = build_consumer_input_scenarios_from_hours_for_activity(
             tool_energy_by_company_and_event,
             found,
-            a3_activity,
+            scenario_consumer,
+        )
+        machining_contributions = self._machining_contributions(
+            scenario_consumer,
+            consumer_scenarios,
         )
 
         frames = [frame for frame in (scenarios, consumer_scenarios) if not frame.empty]
@@ -225,7 +251,47 @@ class ReedCalculationPipeline:
         score_a3, lca_obj = lcia_score_for_named_input(
             "A3", full_scenario, dp=scenario_dp, lca_obj=lca_obj
         )
-        return score_a1, score_a2, score_a3, product_name, country
+        return (
+            score_a1,
+            score_a2,
+            score_a3,
+            product_name,
+            country,
+            machining_contributions,
+        )
+
+    def _machining_contributions(
+        self,
+        machining_activity,
+        consumer_scenarios: pd.DataFrame,
+    ) -> list[dict[str, object]]:
+        scenario_values: dict[tuple[int, int], float] = {}
+        if not consumer_scenarios.empty:
+            scenario_column = next(
+                column
+                for column in consumer_scenarios.columns
+                if column != "original"
+            )
+            scenario_values = {
+                (int(product_id), int(activity_id)): float(value)
+                for (product_id, activity_id), value in consumer_scenarios[
+                    scenario_column
+                ].items()
+            }
+
+        contributions = []
+        for exchange in machining_activity.technosphere():
+            amount = scenario_values.get(
+                (exchange.input.id, machining_activity.id),
+                float(exchange["amount"]),
+            )
+            contributions.append(
+                {
+                    "operation": exchange.input.get("name", ""),
+                    "amount": amount,
+                }
+            )
+        return contributions
 
     def _get_product_activity(self, reed_db, product_name: str, country: str | None):
         if country:
