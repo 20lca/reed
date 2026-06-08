@@ -29,7 +29,14 @@ async def submit_calculation(
     product: str | None = Form(default=None),
     country: str | None = Form(default=None),
     finished: bool = Form(default=True),
-    transport_metadata: str | None = Form(default=None),
+    transport_metadata: str | None = Form(
+        default=None,
+        deprecated=True,
+        description=(
+            "Deprecated diagnostic metadata. It is stored with the request but does "
+            "not affect calculation results or idempotency."
+        ),
+    ),
 ):
     service = get_service(request)
     try:

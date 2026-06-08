@@ -265,6 +265,73 @@ def test_same_archive_finished_state_creates_distinct_jobs(storage_root: Path):
         assert unfinished.json()["result_id"] != finished.json()["result_id"]
 
 
+def test_transport_metadata_does_not_change_idempotency(storage_root: Path):
+    client, _ = create_test_client(storage_root)
+    filename, content = make_tar_archive()
+
+    with client:
+        first = client.post(
+            "/v1/calculations",
+            files={"archive": (filename, content, "application/gzip")},
+            data={
+                "product": "GOIMEK total",
+                "country": "ES",
+                "finished": "false",
+                "transport_metadata": '{"trace_id":"first"}',
+            },
+        )
+        second = client.post(
+            "/v1/calculations",
+            files={"archive": (filename, content, "application/x-gzip")},
+            data={
+                "product": "GOIMEK total",
+                "country": "ES",
+                "finished": "false",
+                "transport_metadata": '{"trace_id":"second"}',
+            },
+        )
+
+        assert first.status_code == 202
+        assert second.status_code == 202
+        assert first.json()["job_id"] == second.json()["job_id"]
+        assert first.json()["result_id"] == second.json()["result_id"]
+
+
+def test_direct_submit_finished_state_changes_idempotency(storage_root: Path):
+    client, _ = create_test_client(storage_root)
+    base_payload = {
+        "company": "goimek",
+        "event_id": "event-1",
+        "product": "GOIMEK total",
+        "country": "ES",
+        "sensor_data": {
+            "records": [
+                {
+                    "timestamp": "2026-05-13T10:00:00Z",
+                    "Tool_Number": 1,
+                    "Power_Active": 3600,
+                }
+            ]
+        },
+        "archive": {
+            "original_filename": "event.tar.gz",
+            "sha256": "same-archive",
+        },
+    }
+
+    with client:
+        service = client.app.state.calculation_service
+        unfinished = service.submit(
+            NormalizedEventPayload.model_validate({**base_payload, "finished": False})
+        )
+        finished = service.submit(
+            NormalizedEventPayload.model_validate({**base_payload, "finished": True})
+        )
+
+    assert unfinished.job_id != finished.job_id
+    assert unfinished.result_id != finished.result_id
+
+
 @pytest.mark.parametrize(("form_value", "expected"), [("0", False), ("1", True)])
 def test_finished_accepts_numeric_form_values(
     storage_root: Path,

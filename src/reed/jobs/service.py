@@ -37,7 +37,7 @@ class CalculationService:
         self._worker_lock = Lock()
 
     def submit(self, payload: NormalizedEventPayload) -> SubmissionResult:
-        checksum = payload.archive.sha256 or payload.checksum()
+        checksum = payload.checksum()
         return self._submit_payload(payload, checksum=checksum)
 
     def submit_archive(

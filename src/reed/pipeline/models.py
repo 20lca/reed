@@ -53,10 +53,16 @@ class NormalizedEventPayload(BaseModel):
     transport_metadata: dict[str, Any] = Field(default_factory=dict)
 
     def checksum(self) -> str:
-        payload = self.model_dump(mode="json", exclude_none=True)
+        payload = self.model_dump(
+            mode="json",
+            exclude_none=True,
+            exclude={"transport_metadata", "source_members"},
+        )
         archive = payload.get("archive")
         if archive:
             archive.pop("storage_path", None)
+            archive.pop("original_filename", None)
+            archive.pop("media_type", None)
         body = json.dumps(
             payload,
             sort_keys=True,

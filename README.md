@@ -68,6 +68,8 @@ The API returns `202 Accepted` with a `job_id` and `result_id`.
 
 Set `finished=false` (or `0`) for an in-progress production snapshot. Its result contains the current total climate impact and machining contributions. Set `finished=true` (or `1`) for the final upload to generate the full DPP result. `finished` defaults to `true` for backward compatibility.
 
+`transport_metadata` is deprecated. Existing clients may still send it, but it has no effect on calculation results or idempotency.
+
 Poll the job until `status` is `completed` or `failed`:
 
 ```powershell
