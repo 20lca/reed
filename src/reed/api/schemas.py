@@ -18,6 +18,7 @@ class JobStatusResponse(BaseModel):
     status: str
     company: str
     event_id: str
+    finished: bool
     submitted_at: datetime
     updated_at: datetime
     error_code: str | None = None

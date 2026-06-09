@@ -37,7 +37,7 @@ class CalculationService:
         self._worker_lock = Lock()
 
     def submit(self, payload: NormalizedEventPayload) -> SubmissionResult:
-        checksum = payload.archive.sha256 or payload.checksum()
+        checksum = payload.checksum()
         return self._submit_payload(payload, checksum=checksum)
 
     def submit_archive(
@@ -48,6 +48,7 @@ class CalculationService:
         content: bytes,
         product: str | None = None,
         country: str | None = None,
+        finished: bool = True,
         transport_metadata: dict[str, object] | None = None,
     ) -> SubmissionResult:
         if not content:
@@ -55,20 +56,22 @@ class CalculationService:
         if not filename.lower().endswith((".tar", ".tar.gz")):
             raise ValueError("archive upload must be a .tar or .tar.gz file")
 
-        checksum = sha256(content).hexdigest()
+        archive_checksum = sha256(content).hexdigest()
         parsed = parse_uploaded_archive(
             content,
             archive_name=filename,
             product=product,
             country=country,
+            finished=finished,
             transport_metadata=transport_metadata or {},
         )
         parsed.archive = StoredArchiveReference(
             original_filename=filename,
             media_type=media_type,
             storage_path=None,
-            sha256=checksum,
+            sha256=archive_checksum,
         )
+        checksum = parsed.checksum()
         return self._submit_payload(
             payload=parsed, checksum=checksum, archive_content=content
         )
@@ -119,6 +122,7 @@ class CalculationService:
             status=JobStatus.accepted,
             company=payload.company,
             event_id=payload.event_id,
+            finished=payload.finished,
             checksum=checksum,
             submitted_at=now,
             updated_at=now,

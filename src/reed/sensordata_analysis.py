@@ -342,6 +342,7 @@ def parse_uploaded_archive(
     archive_name: str,
     product: str | None = None,
     country: str | None = None,
+    finished: bool = True,
     transport_metadata: dict[str, object] | None = None,
 ) -> NormalizedEventPayload:
     records = load_records_from_archive_bytes(archive_bytes, archive_name=archive_name)
@@ -365,6 +366,7 @@ def parse_uploaded_archive(
         ],
         product=product,
         country=country,
+        finished=finished,
         transport_metadata=transport_metadata or {},
     )
 

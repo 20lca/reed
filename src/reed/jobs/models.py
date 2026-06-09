@@ -22,6 +22,7 @@ class JobRecord(BaseModel):
     status: JobStatus
     company: str
     event_id: str
+    finished: bool = True
     checksum: str
     submitted_at: datetime
     updated_at: datetime
@@ -40,6 +41,7 @@ class JobRecord(BaseModel):
             "status": self.status.value,
             "company": self.company,
             "event_id": self.event_id,
+            "finished": self.finished,
             "submitted_at": self.submitted_at,
             "updated_at": self.updated_at,
             "error_code": self.error_code,
