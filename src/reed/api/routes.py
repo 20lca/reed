@@ -8,7 +8,7 @@ from reed.api.schemas import (
     JobStatusResponse,
 )
 from reed.jobs.service import CalculationService, JobNotFoundError, ResultNotReadyError
-from reed.pipeline.models import CalculationKind
+from reed.pipeline.models import CalculationKind, ProductName
 
 router = APIRouter()
 
@@ -25,7 +25,7 @@ def get_service(request: Request) -> CalculationService:
 async def submit_calculation(
     request: Request,
     archive: UploadFile = File(...),
-    product: str | None = Form(default=None),
+    product: ProductName = Form(...),
     country: str | None = Form(default=None),
     calculation_kind: CalculationKind = Form(default=CalculationKind.monitoring),
     finished: bool = Form(default=True),

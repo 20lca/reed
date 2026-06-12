@@ -9,6 +9,7 @@ from uuid import uuid4
 import pandas as pd
 import pytest
 from fastapi.testclient import TestClient
+from pydantic import ValidationError
 
 from reed.api.main import create_app
 from reed.pipeline.models import NormalizedEventPayload
@@ -26,7 +27,7 @@ class FakePipeline:
 
         if payload.calculation_kind == "simulation":
             return {
-                "product": payload.product or f"{payload.company.upper()} total",
+                "product": payload.product.value,
                 "total_climate_impact_kg_co2eq": 6.0,
                 "a1_raw_materials": {"total_kg_co2eq": 1.0},
                 "a2_transport": {"total_kg_co2eq": 2.0},
@@ -41,7 +42,7 @@ class FakePipeline:
 
         if not payload.finished:
             return {
-                "product": payload.product or f"{payload.company.upper()} total",
+                "product": payload.product.value,
                 "total_climate_impact_kg_co2eq": 6.0,
                 "machining_contributions": [
                     {"operation": "drilling", "amount": 2.0},
@@ -54,7 +55,7 @@ class FakePipeline:
                 {
                     "company": payload.company,
                     "event_id": payload.event_id,
-                    "product": payload.product or f"{payload.company.upper()} total",
+                    "product": payload.product.value,
                     "country": payload.country,
                     "archive_members": csv_members,
                     "carbonFootprint": {
@@ -118,6 +119,30 @@ def make_tar_archive(
                 tf.addfile(info, io.BytesIO(data))
 
     return filename, buffer.getvalue()
+
+
+def make_split_lca_tar_archive() -> tuple[str, bytes]:
+    buffer = io.BytesIO()
+    with tarfile.open(fileobj=buffer, mode="w") as tf:
+        files = {
+            "goimek - machine/OF10004_G_TWB_7SZ421_92SQBY.csv": (
+                "Energy_Total,Power_Active,timestamp\n"
+                "10,3600,2025-11-21T08:35:21.839Z\n"
+                "11,1800,2025-11-21T08:35:22.839Z\n"
+            ),
+            "goimek - machine/OF10004_G_TWB_7SZ421_TYZBPS.csv": (
+                "Tool_Number,timestamp\n"
+                "1,2025-11-21T08:35:21.491Z\n"
+                "1,2025-11-21T08:35:22.492Z\n"
+            ),
+        }
+        for name, body in files.items():
+            data = body.encode("utf-8")
+            info = tarfile.TarInfo(name=name)
+            info.size = len(data)
+            tf.addfile(info, io.BytesIO(data))
+
+    return "goimek - machine.tar", buffer.getvalue()
 
 
 def create_test_client(tmp_path: Path) -> tuple[TestClient, Config]:
@@ -199,6 +224,64 @@ def test_submit_poll_fetch_and_consume_tar_upload(storage_root: Path):
         assert missing_response.status_code == 404
 
 
+def test_valid_goimek_product_upload_returns_accepted(storage_root: Path):
+    client, _ = create_test_client(storage_root)
+    filename, content = make_tar_archive()
+
+    with client:
+        response = post_archive(
+            client,
+            filename=filename,
+            content=content,
+            product="GOIMEK total",
+        )
+
+    assert response.status_code == 202
+    assert response.json()["status"] == "accepted"
+
+
+def test_missing_product_is_rejected(storage_root: Path):
+    client, settings = create_test_client(storage_root)
+    filename, content = make_tar_archive()
+
+    with client:
+        response = client.post(
+            "/v1/calculations",
+            files={"archive": (filename, content, "application/gzip")},
+            data={"country": "ES"},
+        )
+
+    assert response.status_code == 422
+    assert list((settings.STORAGE_ROOT / "jobs").glob("*.json")) == []
+
+
+def test_invalid_product_is_rejected_before_job_creation(storage_root: Path):
+    client, settings = create_test_client(storage_root)
+    filename, content = make_tar_archive()
+
+    with client:
+        response = post_archive(
+            client,
+            filename=filename,
+            content=content,
+            product="ACME total",
+        )
+
+    assert response.status_code == 422
+    assert list((settings.STORAGE_ROOT / "jobs").glob("*.json")) == []
+
+
+def test_calculation_openapi_schema_exposes_allowed_products(storage_root: Path):
+    client, _ = create_test_client(storage_root)
+
+    with client:
+        response = client.get("/openapi.json")
+
+    assert response.status_code == 200
+    product_schema = response.json()["components"]["schemas"]["ProductName"]
+    assert product_schema["enum"] == ["WWR total", "GOIMEK total", "KOMATSU total"]
+
+
 def test_worker_reopens_persisted_archive_after_request_returns(storage_root: Path):
     client, settings = create_test_client(storage_root)
     filename, content = make_tar_archive()
@@ -224,6 +307,18 @@ def test_archive_parser_ignores_machine_suffix_when_inferring_company():
     assert {record["company"] for record in records} == {"goimek"}
     assert {record["event_id"] for record in records} == {"OF10005_G_BQC_S8CF2G"}
     assert all("machine_name" not in record for record in records)
+
+
+def test_archive_parser_accepts_lca_columns_split_across_csvs():
+    filename, content = make_split_lca_tar_archive()
+
+    records = load_records_from_archive_bytes(content, archive_name=filename)
+
+    assert {record["csv_basename"] for record in records} == {
+        "OF10004_G_TWB_7SZ421_92SQBY.csv",
+        "OF10004_G_TWB_7SZ421_TYZBPS.csv",
+    }
+    assert {record["event_id"] for record in records} == {"OF10004_G_TWB_7SZ421"}
 
 
 def test_idempotent_submit_reuses_identifiers_for_same_archive(storage_root: Path):
@@ -465,6 +560,49 @@ def test_direct_submit_calculation_kind_changes_idempotency(storage_root: Path):
 
     assert monitoring.job_id != simulation.job_id
     assert monitoring.result_id != simulation.result_id
+
+
+def test_normalized_event_payload_rejects_invalid_product():
+    with pytest.raises(ValidationError):
+        NormalizedEventPayload.model_validate(
+            {
+                "company": "goimek",
+                "event_id": "event-1",
+                "product": "ACME total",
+                "country": "ES",
+                "sensor_data": {
+                    "records": [
+                        {
+                            "timestamp": "2026-05-13T10:00:00Z",
+                            "Tool_Number": 1,
+                            "Power_Active": 3600,
+                        }
+                    ]
+                },
+                "archive": {
+                    "original_filename": "event.tar.gz",
+                    "sha256": "same-archive",
+                },
+            }
+        )
+
+
+def test_submit_archive_rejects_invalid_product_before_job_creation(storage_root: Path):
+    client, settings = create_test_client(storage_root)
+    filename, content = make_tar_archive()
+
+    with client:
+        service = client.app.state.calculation_service
+        with pytest.raises(ValueError, match="product must be one of"):
+            service.submit_archive(
+                filename=filename,
+                media_type="application/gzip",
+                content=content,
+                product="ACME total",
+                country="ES",
+            )
+
+    assert list((settings.STORAGE_ROOT / "jobs").glob("*.json")) == []
 
 
 @pytest.mark.parametrize(("form_value", "expected"), [("0", False), ("1", True)])

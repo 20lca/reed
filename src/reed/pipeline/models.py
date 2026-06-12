@@ -44,6 +44,12 @@ class CalculationKind(str, Enum):
     simulation = "simulation"
 
 
+class ProductName(str, Enum):
+    wwr_total = "WWR total"
+    goimek_total = "GOIMEK total"
+    komatsu_total = "KOMATSU total"
+
+
 class NormalizedEventPayload(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -52,7 +58,7 @@ class NormalizedEventPayload(BaseModel):
     sensor_data: ParsedArchiveSensorData
     archive: StoredArchiveReference
     source_members: list[ArchiveMemberMetadata] = Field(default_factory=list)
-    product: str | None = None
+    product: ProductName
     country: str | None = None
     calculation_kind: CalculationKind = CalculationKind.monitoring
     finished: bool = True

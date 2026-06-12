@@ -54,7 +54,7 @@ $baseUrl = "http://127.0.0.1:8000"
 $file = "C:\path\to\OF10005.tar.gz"
 ```
 
-Submit a calculation request:
+Submit a calculation request (`product` is required):
 
 ```powershell
 curl.exe -X POST "$baseUrl/v1/calculations" `
@@ -64,6 +64,8 @@ curl.exe -X POST "$baseUrl/v1/calculations" `
   -F "calculation_kind=monitoring" `
   -F "finished=false"
 ```
+
+Allowed products: `product` must be one of `WWR total`, `GOIMEK total`, or `KOMATSU total`. Any other value is rejected before calculation starts.
 
 The API returns `202 Accepted` with a `job_id` and `result_id`.
 

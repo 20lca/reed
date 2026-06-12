@@ -139,7 +139,7 @@ class ReedCalculationPipeline:
         except Exception as exc:
             raise PipelineError("bonsai_database_error", str(exc)) from exc
 
-        product_name = payload.product or f"{payload.company.upper()} total"
+        product_name = payload.product.value
         product_activity = self._get_product_activity(
             reed, product_name, payload.country
         )

@@ -9,6 +9,7 @@ from reed.jobs.models import JobRecord, JobStatus, SubmissionResult
 from reed.pipeline.models import (
     CalculationKind,
     NormalizedEventPayload,
+    ProductName,
     StoredArchiveReference,
 )
 from reed.pipeline.service import PipelineError, ReedCalculationPipeline
@@ -50,11 +51,18 @@ class CalculationService:
         filename: str,
         media_type: str | None,
         content: bytes,
-        product: str | None = None,
+        product: ProductName | str,
         country: str | None = None,
         calculation_kind: CalculationKind = CalculationKind.monitoring,
         finished: bool = True,
     ) -> SubmissionResult:
+        try:
+            product = ProductName(product)
+        except ValueError as exc:
+            raise ValueError(
+                "product must be one of: WWR total, GOIMEK total, KOMATSU total"
+            ) from exc
+
         if not content:
             raise ValueError("archive upload must not be empty")
         if not filename.lower().endswith((".tar", ".tar.gz")):

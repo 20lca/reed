@@ -22,6 +22,7 @@ from reed.pipeline.models import (
     NormalizedEventPayload,
     NormalizedSensorRecord,
     ParsedArchiveSensorData,
+    ProductName,
     StoredArchiveReference,
 )
 
@@ -210,11 +211,12 @@ def infer_company_from_archive(
 
 
 def _filter_lca_columns(df: pd.DataFrame) -> pd.DataFrame | None:
-    if not LCA_REQUIRED_COLUMNS.issubset(df.columns):
+    relevant_columns = [column for column in LCA_RELEVANT_COLUMNS if column in df.columns]
+    if "timestamp" not in relevant_columns:
         return None
-    return df[
-        [column for column in LCA_RELEVANT_COLUMNS if column in df.columns]
-    ].copy()
+    if len(relevant_columns) == 1:
+        return None
+    return df[relevant_columns].copy()
 
 
 def load_records_from_tarfile(
@@ -283,6 +285,12 @@ def load_records_from_tarfile(
             f"Archive {archive_name} contains multiple event ids: {sorted(event_ids)}"
         )
 
+    merged = merge_records(lca_records)
+    if not (LCA_REQUIRED_COLUMNS - {"timestamp"}).issubset(merged.columns):
+        raise ValueError(
+            f"No CSV matching the expected LCA schema was found in archive {archive_name}"
+        )
+
     return lca_records
 
 
@@ -344,7 +352,7 @@ def parse_uploaded_archive(
     archive_bytes: bytes,
     *,
     archive_name: str,
-    product: str | None = None,
+    product: ProductName,
     country: str | None = None,
     calculation_kind: CalculationKind = CalculationKind.monitoring,
     finished: bool = True,
