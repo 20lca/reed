@@ -1,0 +1,19 @@
+{
+  "job_id": "job_92bbacbfbaa2438c8c25ddb639ccfb39",
+  "result_id": "res_ba492f3560414de5848fb76e1ea2937e",
+  "status": "failed",
+  "company": "of10005targz",
+  "event_id": "OF10005_G_BQC_S8CF2G",
+  "calculation_kind": "monitoring",
+  "finished": true,
+  "checksum": "4d35c98a15c401ca86b66b2dddf20947b6616689421c099bcf729d38f7e8bf18",
+  "submitted_at": "2026-06-12T09:45:31.007652Z",
+  "updated_at": "2026-06-12T09:54:23.299704Z",
+  "payload_path": "storage\\payloads\\job_92bbacbfbaa2438c8c25ddb639ccfb39.json",
+  "archive_path": "storage\\archives\\job_92bbacbfbaa2438c8c25ddb639ccfb39.tar.gz",
+  "archive_filename": "OF10005.tar.gz",
+  "error_code": "internal_error",
+  "error_message": "",
+  "consumed_at": null,
+  "expires_at": "2026-06-13T09:45:31.007652Z"
+}

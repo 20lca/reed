@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import json
+from enum import Enum
 from hashlib import sha256
-from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -39,6 +39,11 @@ class StoredArchiveReference(BaseModel):
     sha256: str
 
 
+class CalculationKind(str, Enum):
+    monitoring = "monitoring"
+    simulation = "simulation"
+
+
 class NormalizedEventPayload(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -49,14 +54,14 @@ class NormalizedEventPayload(BaseModel):
     source_members: list[ArchiveMemberMetadata] = Field(default_factory=list)
     product: str | None = None
     country: str | None = None
+    calculation_kind: CalculationKind = CalculationKind.monitoring
     finished: bool = True
-    transport_metadata: dict[str, Any] = Field(default_factory=dict)
 
     def checksum(self) -> str:
         payload = self.model_dump(
             mode="json",
             exclude_none=True,
-            exclude={"transport_metadata", "source_members"},
+            exclude={"source_members"},
         )
         archive = payload.get("archive")
         if archive:

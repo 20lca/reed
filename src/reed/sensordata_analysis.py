@@ -3,30 +3,34 @@
 
 # 0) Imports and setup
 from __future__ import annotations
+
+import re
 import tarfile
+from collections import Counter, defaultdict
+from functools import cache, reduce
 from io import BytesIO
 from pathlib import Path
-from reed import utils
-from collections import defaultdict, Counter
-from functools import cache, reduce
-import re
 from typing import Dict, List, Tuple
+
 import numpy as np
 import pandas as pd
+
+from reed import utils
 from reed.pipeline.models import (
     ArchiveMemberMetadata,
+    CalculationKind,
     NormalizedEventPayload,
     NormalizedSensorRecord,
     ParsedArchiveSensorData,
     StoredArchiveReference,
 )
 
-
 LCA_REQUIRED_COLUMNS = {"timestamp", "Tool_Number", "Power_Active"}
 LCA_RELEVANT_COLUMNS = ["timestamp", "Tool_Number", "Power_Active", "Energy_Total"]
 
 
 # 1) Sensordata import functions
+
 
 def parse_event_and_type_from_csv_filename(csv_filename: str) -> tuple[str, str | None]:
     """
@@ -56,9 +60,7 @@ def parse_event_and_type_from_csv_filename(csv_filename: str) -> tuple[str, str 
 
 
 def load_monitoring_records(
-    monitoring_data_path: Path,
-    *,
-    debug: bool = False
+    monitoring_data_path: Path, *, debug: bool = False
 ) -> list[dict]:
     """
     Load all sensor CSV files stored inside .tar/.tar.gz archives
@@ -66,7 +68,6 @@ def load_monitoring_records(
 
     Each returned record contains:
       - company
-      - machine_name
       - event_id
       - measurement_type
       - tar_path
@@ -100,9 +101,10 @@ def load_monitoring_records(
             continue
 
         company = parts[0].lower()
-        machine_name = " - ".join(parts[1:]) if len(parts) > 1 else None
 
-        tar_files = list(company_folder.rglob("*.tar")) + list(company_folder.rglob("*.tar.gz"))
+        tar_files = list(company_folder.rglob("*.tar")) + list(
+            company_folder.rglob("*.tar.gz")
+        )
 
         if not tar_files:
             if debug:
@@ -115,8 +117,7 @@ def load_monitoring_records(
             try:
                 with tarfile.open(tar_path, mode="r:*") as tf:
                     csv_members = [
-                        m for m in tf.getmembers()
-                        if m.name.lower().endswith(".csv")
+                        m for m in tf.getmembers() if m.name.lower().endswith(".csv")
                     ]
 
                     if not csv_members:
@@ -143,16 +144,17 @@ def load_monitoring_records(
 
                         df = pd.read_csv(f)
 
-                        all_records.append({
-                            "company": company,
-                            "machine_name": machine_name,
-                            "event_id": event_id,
-                            "measurement_type": measurement_type,
-                            "tar_path": tar_path,
-                            "csv_name": csv_member.name,
-                            "csv_basename": csv_basename,
-                            "data": df,
-                        })
+                        all_records.append(
+                            {
+                                "company": company,
+                                "event_id": event_id,
+                                "measurement_type": measurement_type,
+                                "tar_path": tar_path,
+                                "csv_name": csv_member.name,
+                                "csv_basename": csv_basename,
+                                "data": df,
+                            }
+                        )
 
             except tarfile.TarError as e:
                 if debug:
@@ -184,42 +186,35 @@ def _infer_company_candidate(name: str) -> str | None:
 def infer_company_from_archive(
     archive_name: str,
     member_names: list[str],
-) -> tuple[str, str | None]:
-    candidates: list[tuple[str, str | None]] = []
+) -> str:
+    candidates: list[str] = []
 
     for member_name in member_names:
         parent = Path(member_name).parent
         top_level = parent.parts[0] if parent.parts else ""
         candidate = _infer_company_candidate(top_level)
         if candidate:
-            machine_name = None
-            split_parts = [p.strip() for p in top_level.split(" - ")]
-            if len(split_parts) > 1:
-                machine_name = " - ".join(split_parts[1:]) or None
-            candidates.append((candidate, machine_name))
+            candidates.append(candidate)
 
     archive_candidate = _infer_company_candidate(Path(archive_name).name)
     if archive_candidate:
-        candidates.append((archive_candidate, None))
+        candidates.append(archive_candidate)
 
-    unique_companies = {company for company, _ in candidates}
+    unique_companies = set(candidates)
     if len(unique_companies) != 1:
         raise ValueError(
             "Could not infer a single company from archive or member names"
         )
 
-    company = unique_companies.pop()
-    machine_name = next(
-        (machine for candidate, machine in candidates if candidate == company and machine),
-        None,
-    )
-    return company, machine_name
+    return unique_companies.pop()
 
 
 def _filter_lca_columns(df: pd.DataFrame) -> pd.DataFrame | None:
     if not LCA_REQUIRED_COLUMNS.issubset(df.columns):
         return None
-    return df[[column for column in LCA_RELEVANT_COLUMNS if column in df.columns]].copy()
+    return df[
+        [column for column in LCA_RELEVANT_COLUMNS if column in df.columns]
+    ].copy()
 
 
 def load_records_from_tarfile(
@@ -228,11 +223,13 @@ def load_records_from_tarfile(
     archive_name: str,
     debug: bool = False,
 ) -> list[dict]:
-    csv_members = [member for member in tf.getmembers() if member.name.lower().endswith(".csv")]
+    csv_members = [
+        member for member in tf.getmembers() if member.name.lower().endswith(".csv")
+    ]
     if not csv_members:
         raise ValueError(f"No CSV files found in archive {archive_name}")
 
-    company, machine_name = infer_company_from_archive(
+    company = infer_company_from_archive(
         archive_name,
         [member.name for member in csv_members],
     )
@@ -242,11 +239,15 @@ def load_records_from_tarfile(
 
     for csv_member in csv_members:
         csv_basename = Path(csv_member.name).name
-        event_id, measurement_type = parse_event_and_type_from_csv_filename(csv_basename)
+        event_id, measurement_type = parse_event_and_type_from_csv_filename(
+            csv_basename
+        )
         extracted = tf.extractfile(csv_member)
         if extracted is None:
             if debug:
-                print(f"Warning — could not extract {csv_member.name} from {archive_name}")
+                print(
+                    f"Warning — could not extract {csv_member.name} from {archive_name}"
+                )
             continue
 
         df = pd.read_csv(extracted)
@@ -258,7 +259,6 @@ def load_records_from_tarfile(
         lca_records.append(
             {
                 "company": company,
-                "machine_name": machine_name,
                 "event_id": event_id,
                 "measurement_type": measurement_type,
                 "tar_path": archive_name,
@@ -273,7 +273,9 @@ def load_records_from_tarfile(
             raise ValueError(
                 f"No CSV matching the expected LCA schema was found in archive {archive_name}"
             )
-        raise ValueError(f"No readable CSV records were found in archive {archive_name}")
+        raise ValueError(
+            f"No readable CSV records were found in archive {archive_name}"
+        )
 
     event_ids = {record["event_id"] for record in lca_records}
     if len(event_ids) != 1:
@@ -294,7 +296,9 @@ def load_records_from_archive_bytes(
         with tarfile.open(fileobj=BytesIO(archive_bytes), mode="r:*") as tf:
             return load_records_from_tarfile(tf, archive_name=archive_name, debug=debug)
     except tarfile.TarError as exc:
-        raise ValueError(f"Uploaded file is not a valid tar archive: {archive_name}") from exc
+        raise ValueError(
+            f"Uploaded file is not a valid tar archive: {archive_name}"
+        ) from exc
 
 
 def load_records_from_archive_path(
@@ -342,8 +346,8 @@ def parse_uploaded_archive(
     archive_name: str,
     product: str | None = None,
     country: str | None = None,
+    calculation_kind: CalculationKind = CalculationKind.monitoring,
     finished: bool = True,
-    transport_metadata: dict[str, object] | None = None,
 ) -> NormalizedEventPayload:
     records = load_records_from_archive_bytes(archive_bytes, archive_name=archive_name)
     company = records[0]["company"]
@@ -366,14 +370,12 @@ def parse_uploaded_archive(
         ],
         product=product,
         country=country,
+        calculation_kind=calculation_kind,
         finished=finished,
-        transport_metadata=transport_metadata or {},
     )
 
 
-def group_records_by_event(
-    records: list[dict]
-) -> dict[tuple[str, str], list[dict]]:
+def group_records_by_event(records: list[dict]) -> dict[tuple[str, str], list[dict]]:
     """
     Group records by (company, event_id).
     """
@@ -385,9 +387,10 @@ def group_records_by_event(
 
 # Import of tool keys functions
 
+
 @cache
 def load_tool_operation_keys(
-    tool_descriptions_path: Path
+    tool_descriptions_path: Path,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """
     Load tool-operation mapping tables from the Excel workbook
@@ -453,7 +456,7 @@ def load_tool_operation_keys(
         company_frames.append(df_out)
 
     key_company_tools_raw = pd.concat(company_frames, ignore_index=True)
-    
+
     # Find ambugious keys: Same Tool_Number for same company maps to multiple OP TYPE values
     amb_keys = (
         key_company_tools_raw.groupby(["company", "Tool_Number"])["OP TYPE"]
@@ -464,7 +467,11 @@ def load_tool_operation_keys(
 
     # Save ambiguous keys with their candidate OP TYPE values for reference
     ambiguous_company_tools = (
-        key_company_tools_raw.merge(amb_keys[["company", "Tool_Number"]], on=["company", "Tool_Number"], how="inner")
+        key_company_tools_raw.merge(
+            amb_keys[["company", "Tool_Number"]],
+            on=["company", "Tool_Number"],
+            how="inner",
+        )
         .groupby(["company", "Tool_Number"])["OP TYPE"]
         .apply(lambda s: sorted(set(s)))
         .reset_index(name="op_type_candidates")
@@ -476,7 +483,12 @@ def load_tool_operation_keys(
     if not amb_keys.empty:
         # anti-join
         key_company_tools = (
-            key_company_tools_raw.merge(amb_keys[["company", "Tool_Number"]], on=["company", "Tool_Number"], how="left", indicator=True)
+            key_company_tools_raw.merge(
+                amb_keys[["company", "Tool_Number"]],
+                on=["company", "Tool_Number"],
+                how="left",
+                indicator=True,
+            )
             .query("_merge == 'left_only'")
             .drop(columns=["_merge"])
         )
@@ -507,24 +519,30 @@ def load_tool_operation_keys(
             .apply(lambda s: sorted(set(s)))
             .reset_index(name="reed_tool_candidates")
         )
-        
+
         if not amb_ops.empty:
             key_reed_tools = (
-                key_reed_tools_raw.merge(amb_ops[["OP TYPE"]], on="OP TYPE", how="left", indicator=True)
+                key_reed_tools_raw.merge(
+                    amb_ops[["OP TYPE"]], on="OP TYPE", how="left", indicator=True
+                )
                 .query("_merge == 'left_only'")
                 .drop(columns=["_merge"])
             )
         else:
             key_reed_tools = key_reed_tools_raw.copy()
 
-        key_reed_tools = key_reed_tools.drop_duplicates(["OP TYPE"], keep="first").reset_index(drop=True)
+        key_reed_tools = key_reed_tools.drop_duplicates(
+            ["OP TYPE"], keep="first"
+        ).reset_index(drop=True)
 
     else:
         key_reed_tools = key_reed_tools_raw
 
     return key_company_tools, key_reed_tools, ambiguous_company_tools
 
+
 # Data analsysis functions
+
 
 def merge_records(records):
     """
@@ -535,11 +553,11 @@ def merge_records(records):
     cols = ["timestamp", "Tool_Number", "Power_Active", "Energy_Total"]
 
     merged = None
-    
+
     for i, r in enumerate(records):
         df = r["data"].copy()
         df = df[[c for c in cols if c in df.columns]].copy()
-        df["timestamp"] = pd.to_datetime(df["timestamp"], utc=True).dt.floor('s')
+        df["timestamp"] = pd.to_datetime(df["timestamp"], utc=True).dt.floor("s")
         df = df.set_index("timestamp")
 
         if merged is None:
@@ -548,8 +566,9 @@ def merge_records(records):
             merged = merged.join(df, how="outer")
 
     merged = merged.sort_index()
-            
+
     return merged
+
 
 def build_final_df(
     events: Dict[Tuple[str, str], List[dict]],
@@ -616,24 +635,26 @@ def build_final_df(
         merged_df = merged_df.reset_index()
 
         # Meter-based energy delta (if Energy_Total exists)
-        s = merged_df["Energy_Total"].dropna() if "Energy_Total" in merged_df.columns else pd.Series(dtype=float)
+        s = (
+            merged_df["Energy_Total"].dropna()
+            if "Energy_Total" in merged_df.columns
+            else pd.Series(dtype=float)
+        )
         meter_energy = np.nan if s.empty else (s.iloc[-1] - s.iloc[0])
 
-        event_summaries.append({
-            "company": company,
-            "event_id": event_id,
-            "energy_meter_total": meter_energy,
-        })
+        event_summaries.append(
+            {
+                "company": company,
+                "event_id": event_id,
+                "energy_meter_total": meter_energy,
+            }
+        )
 
         # Aggregate within event by Tool_Number
-        grouped_df = (
-            merged_df
-            .groupby("Tool_Number", as_index=False)
-            .agg(
-                energy_consumption=("energy_consumption", "sum"),
-                Power_Active=("Power_Active", "mean"),
-                seconds=("timestamp", "count"),
-            )
+        grouped_df = merged_df.groupby("Tool_Number", as_index=False).agg(
+            energy_consumption=("energy_consumption", "sum"),
+            Power_Active=("Power_Active", "mean"),
+            seconds=("timestamp", "count"),
         )
 
         grouped_df["hours"] = grouped_df["seconds"] / 3600.0
@@ -670,10 +691,14 @@ def build_final_df(
 
     # Default REED tool when missing
     if "reed tool" in final_df.columns:
-        final_df["reed tool"] = final_df["reed tool"].fillna("generic machining, soraluce")
+        final_df["reed tool"] = final_df["reed tool"].fillna(
+            "generic machining, soraluce"
+        )
     else:
         # If key_reed_tools uses a different column name, fail loudly
-        raise KeyError("Expected column 'reed tool' not found after merging key_reed_tools.")
+        raise KeyError(
+            "Expected column 'reed tool' not found after merging key_reed_tools."
+        )
 
     final_df = final_df.set_index(["company", "event_id", "Tool_Number"])
 
@@ -681,7 +706,9 @@ def build_final_df(
 
     return final_df, event_summaries_df
 
+
 # Sensordata_analysis
+
 
 def run_sensordata_analysis(
     monitoring_data_path: Path,
@@ -721,7 +748,9 @@ def run_sensordata_analysis(
     events = group_records_by_event(records)
 
     # 3) Load mapping keys
-    key_company_tools, key_reed_tools, ambiguous_company_tools = load_tool_operation_keys(tool_descriptions_path)
+    key_company_tools, key_reed_tools, ambiguous_company_tools = (
+        load_tool_operation_keys(tool_descriptions_path)
+    )
 
     # 4) Build final dataframe
     final_df, event_summaries_df = build_final_df(
@@ -731,9 +760,16 @@ def run_sensordata_analysis(
         debug=debug,
     )
 
-    return final_df, event_summaries_df, ambiguous_company_tools, key_company_tools, key_reed_tools
+    return (
+        final_df,
+        event_summaries_df,
+        ambiguous_company_tools,
+        key_company_tools,
+        key_reed_tools,
+    )
 
-#Other analysis functions
+
+# Other analysis functions
 def find_missing_op_type_tools(final_df: pd.DataFrame) -> pd.DataFrame:
     """
     Identify tool numbers that are missing an OP TYPE mapping.
@@ -754,8 +790,7 @@ def find_missing_op_type_tools(final_df: pd.DataFrame) -> pd.DataFrame:
         raise KeyError("Column 'OP TYPE' not found in final_df")
 
     missing = (
-        final_df
-        .loc[final_df["OP TYPE"].isna()]
+        final_df.loc[final_df["OP TYPE"].isna()]
         .reset_index()[["company", "Tool_Number"]]
         .drop_duplicates()
         .sort_values(["company", "Tool_Number"])
@@ -763,6 +798,7 @@ def find_missing_op_type_tools(final_df: pd.DataFrame) -> pd.DataFrame:
     )
 
     return missing
+
 
 def split_final_df_by_company_event(final_df):
     dfs = {}
@@ -776,11 +812,10 @@ def split_final_df_by_company_event(final_df):
 def sum_by_reed_tool(
     df,
     group_cols=("company", "event_id", "reed tool"),
-    cols_to_sum=("energy_consumption", "hours")
+    cols_to_sum=("energy_consumption", "hours"),
 ):
     result = (
-        df
-        .drop(columns=["Tool_Number", "seconds"], errors="ignore")
+        df.drop(columns=["Tool_Number", "seconds"], errors="ignore")
         .groupby(list(group_cols), as_index=False)
         .agg({col: "sum" for col in cols_to_sum})
     )
@@ -789,6 +824,7 @@ def sum_by_reed_tool(
     result = result.set_index(["company", "event_id", "reed tool"]).sort_index()
 
     return result
+
 
 def compute_event_totals(
     final_df: pd.DataFrame,
@@ -832,29 +868,32 @@ def compute_event_totals(
         raise KeyError(f"final_df missing required columns: {missing_cols}")
 
     df_totals = (
-        final_df
-        .reset_index()
+        final_df.reset_index()
         .groupby(["company", "event_id"], as_index=False)
-        .agg({
-            "energy_consumption": "sum",
-            "Power_Active": "mean",
-            "hours": "sum",
-        })
+        .agg(
+            {
+                "energy_consumption": "sum",
+                "Power_Active": "mean",
+                "hours": "sum",
+            }
+        )
         .set_index(["company", "event_id"])
     )
 
     # Ensure proper index on event_summaries
-    if not {"company", "event_id", "energy_meter_total"}.issubset(event_summaries.columns):
-        raise KeyError("event_summaries must contain company, event_id, energy_meter_total")
+    if not {"company", "event_id", "energy_meter_total"}.issubset(
+        event_summaries.columns
+    ):
+        raise KeyError(
+            "event_summaries must contain company, event_id, energy_meter_total"
+        )
 
     df_meter = event_summaries.set_index(["company", "event_id"])
 
     df_totals = df_totals.join(df_meter)
 
     df_totals["rel_diff_calc_vs_meter"] = (
-        (df_totals["energy_consumption"] - df_totals["energy_meter_total"])
-        / df_totals["energy_meter_total"]
-    )
+        df_totals["energy_consumption"] - df_totals["energy_meter_total"]
+    ) / df_totals["energy_meter_total"]
 
     return df_totals
-

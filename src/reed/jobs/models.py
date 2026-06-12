@@ -22,6 +22,7 @@ class JobRecord(BaseModel):
     status: JobStatus
     company: str
     event_id: str
+    calculation_kind: str = "monitoring"
     finished: bool = True
     checksum: str
     submitted_at: datetime
@@ -41,6 +42,7 @@ class JobRecord(BaseModel):
             "status": self.status.value,
             "company": self.company,
             "event_id": self.event_id,
+            "calculation_kind": self.calculation_kind,
             "finished": self.finished,
             "submitted_at": self.submitted_at,
             "updated_at": self.updated_at,

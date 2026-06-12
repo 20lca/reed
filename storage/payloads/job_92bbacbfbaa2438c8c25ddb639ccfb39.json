@@ -1,0 +1,25 @@
+{
+  "company": "of10005targz",
+  "event_id": "OF10005_G_BQC_S8CF2G",
+  "sensor_data": {
+    "records": []
+  },
+  "archive": {
+    "original_filename": "OF10005.tar.gz",
+    "media_type": "application/x-gzip",
+    "storage_path": "storage\\archives\\job_92bbacbfbaa2438c8c25ddb639ccfb39.tar.gz",
+    "sha256": "67d96a6e8db2007afd4771a37098df2685b376c2772308a8d81b9b678a6af738"
+  },
+  "source_members": [
+    {
+      "member_name": "OF10005_G_BQC_S8CF2G_TYZBPS.csv",
+      "csv_basename": "OF10005_G_BQC_S8CF2G_TYZBPS.csv",
+      "measurement_type": "TYZBPS"
+    }
+  ],
+  "product": "GOIMEK all",
+  "country": "ES",
+  "calculation_kind": "monitoring",
+  "finished": true,
+  "transport_metadata": {}
+}

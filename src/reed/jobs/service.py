@@ -6,7 +6,11 @@ from threading import Event, Lock, Thread
 from uuid import uuid4
 
 from reed.jobs.models import JobRecord, JobStatus, SubmissionResult
-from reed.pipeline.models import NormalizedEventPayload, StoredArchiveReference
+from reed.pipeline.models import (
+    CalculationKind,
+    NormalizedEventPayload,
+    StoredArchiveReference,
+)
 from reed.pipeline.service import PipelineError, ReedCalculationPipeline
 from reed.sensordata_analysis import parse_uploaded_archive
 from reed.storage.files import FileStorage
@@ -48,8 +52,8 @@ class CalculationService:
         content: bytes,
         product: str | None = None,
         country: str | None = None,
+        calculation_kind: CalculationKind = CalculationKind.monitoring,
         finished: bool = True,
-        transport_metadata: dict[str, object] | None = None,
     ) -> SubmissionResult:
         if not content:
             raise ValueError("archive upload must not be empty")
@@ -62,8 +66,8 @@ class CalculationService:
             archive_name=filename,
             product=product,
             country=country,
+            calculation_kind=calculation_kind,
             finished=finished,
-            transport_metadata=transport_metadata or {},
         )
         parsed.archive = StoredArchiveReference(
             original_filename=filename,
@@ -122,6 +126,7 @@ class CalculationService:
             status=JobStatus.accepted,
             company=payload.company,
             event_id=payload.event_id,
+            calculation_kind=payload.calculation_kind.value,
             finished=payload.finished,
             checksum=checksum,
             submitted_at=now,
