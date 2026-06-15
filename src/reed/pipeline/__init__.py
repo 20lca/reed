@@ -1,4 +1,9 @@
-from .models import NormalizedEventPayload
+from .models import NormalizedEventPayload, ProductName
 from .service import PipelineError, ReedCalculationPipeline
 
-__all__ = ["NormalizedEventPayload", "PipelineError", "ReedCalculationPipeline"]
+__all__ = [
+    "NormalizedEventPayload",
+    "PipelineError",
+    "ProductName",
+    "ReedCalculationPipeline",
+]

@@ -54,21 +54,24 @@ $baseUrl = "http://127.0.0.1:8000"
 $file = "C:\path\to\OF10005.tar.gz"
 ```
 
-Submit a calculation request:
+Submit a calculation request (`product` is required):
 
 ```powershell
 curl.exe -X POST "$baseUrl/v1/calculations" `
   -F "archive=@$file;type=application/gzip" `
   -F "product=GOIMEK total" `
   -F "country=ES" `
+  -F "calculation_kind=monitoring" `
   -F "finished=false"
 ```
+
+Allowed products: `product` must be one of `WWR total`, `GOIMEK total`, or `KOMATSU total`. Any other value is rejected before calculation starts.
 
 The API returns `202 Accepted` with a `job_id` and `result_id`.
 
 Set `finished=false` (or `0`) for an in-progress production snapshot. Its result contains the current total climate impact and machining contributions. Set `finished=true` (or `1`) for the final upload to generate the full DPP result. `finished` defaults to `true` for backward compatibility.
 
-`transport_metadata` is deprecated. Existing clients may still send it, but it has no effect on calculation results or idempotency.
+Set `calculation_kind=simulation` to run the simulation workflow with the same upload/job/result/consume lifecycle. Simulation results are not DPP documents; they include product total, A1 raw materials, A2 transport, and A3 machining operation contributions. `calculation_kind` defaults to `monitoring`.
 
 Poll the job until `status` is `completed` or `failed`:
 
