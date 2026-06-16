@@ -98,10 +98,11 @@ def import_bonsai(path_to_tidy_files: Path | None = None):
     bonsai_v2_1_6.write_database()
 
 
-def import_reed_db():
+def import_reed_db(reed_path: Path | None = None):
+    reed_root = reed_path or CONFIG.REED_PATH
 
     importer = ExcelImporter(
-        CONFIG.REED_PATH / "Model" / "REED_model_20260506.xlsx",
+        reed_root / "Model" / "REED_model_20260506.xlsx",
     )
     importer.apply_strategies()
     importer.match_database(fields=["name", "unit", "location"])
