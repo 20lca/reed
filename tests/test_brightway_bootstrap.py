@@ -22,6 +22,20 @@ class FakeBrightwayData:
     def __init__(self, databases: set[str]):
         self.projects = FakeProjects()
         self.databases = databases
+        self.deleted: list[str] = []
+
+    def Database(self, name: str):
+        return FakeDatabase(self, name)
+
+
+class FakeDatabase:
+    def __init__(self, bd: FakeBrightwayData, name: str):
+        self.bd = bd
+        self.name = name
+
+    def delete(self, warn: bool = True) -> None:
+        self.bd.deleted.append(self.name)
+        self.bd.databases.discard(self.name)
 
 
 @pytest.fixture
@@ -57,8 +71,8 @@ def test_missing_databases_trigger_import(
         fake_bd.databases.add("BONSAI_TEST")
         fake_bd.databases.add("BONSAI_TEST biosphere")
 
-    def fake_import_reed_db() -> None:
-        calls.append(("reed", None))
+    def fake_import_reed_db(reed_path: Path) -> None:
+        calls.append(("reed", reed_path))
         fake_bd.databases.add("reed")
 
     monkeypatch.setattr(brightway_api, "bd", fake_bd)
@@ -68,16 +82,22 @@ def test_missing_databases_trigger_import(
     brightway_api.ensure_brightway_databases(settings)
 
     assert fake_bd.projects.current == "test-reed"
-    assert calls == [("bonsai", settings.BONSAI_PATH), ("reed", None)]
+    assert fake_bd.deleted == ["reed"]
+    assert calls == [("bonsai", settings.BONSAI_PATH), ("reed", settings.REED_PATH)]
 
 
-def test_ready_databases_skip_import(
+def test_ready_databases_skip_bonsai_but_rebuild_reed(
     monkeypatch: pytest.MonkeyPatch, workspace_tmp: Path
 ):
     settings = make_settings(workspace_tmp)
     fake_bd = FakeBrightwayData(
         databases={"reed", "BONSAI_TEST", "BONSAI_TEST biosphere"}
     )
+    calls: list[tuple[str, object]] = []
+
+    def fake_import_reed_db(reed_path: Path) -> None:
+        calls.append(("reed", reed_path))
+        fake_bd.databases.add("reed")
 
     monkeypatch.setattr(brightway_api, "bd", fake_bd)
     monkeypatch.setattr(
@@ -85,15 +105,13 @@ def test_ready_databases_skip_import(
         "import_bonsai",
         lambda path: pytest.fail("import_bonsai should not be called"),
     )
-    monkeypatch.setattr(
-        brightway_api,
-        "import_reed_db",
-        lambda: pytest.fail("import_reed_db should not be called"),
-    )
+    monkeypatch.setattr(brightway_api, "import_reed_db", fake_import_reed_db)
 
     brightway_api.ensure_brightway_databases(settings)
 
     assert fake_bd.projects.current == "test-reed"
+    assert fake_bd.deleted == ["reed"]
+    assert calls == [("reed", settings.REED_PATH)]
 
 
 def test_import_failure_names_missing_database_and_path(
@@ -107,7 +125,7 @@ def test_import_failure_names_missing_database_and_path(
 
     monkeypatch.setattr(brightway_api, "bd", fake_bd)
     monkeypatch.setattr(brightway_api, "import_bonsai", fail_import)
-    monkeypatch.setattr(brightway_api, "import_reed_db", lambda: None)
+    monkeypatch.setattr(brightway_api, "import_reed_db", lambda reed_path: None)
 
     with pytest.raises(RuntimeError) as exc_info:
         brightway_api.ensure_brightway_databases(settings)
