@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import json
-
 from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile, status
 
 from reed.api.schemas import (
@@ -10,6 +8,7 @@ from reed.api.schemas import (
     JobStatusResponse,
 )
 from reed.jobs.service import CalculationService, JobNotFoundError, ResultNotReadyError
+from reed.pipeline.models import CalculationKind, ProductName
 
 router = APIRouter()
 
@@ -26,33 +25,12 @@ def get_service(request: Request) -> CalculationService:
 async def submit_calculation(
     request: Request,
     archive: UploadFile = File(...),
-    product: str | None = Form(default=None),
+    product: ProductName = Form(...),
     country: str | None = Form(default=None),
+    calculation_kind: CalculationKind = Form(default=CalculationKind.monitoring),
     finished: bool = Form(default=True),
-    transport_metadata: str | None = Form(
-        default=None,
-        deprecated=True,
-        description=(
-            "Deprecated diagnostic metadata. It is stored with the request but does "
-            "not affect calculation results or idempotency."
-        ),
-    ),
 ):
     service = get_service(request)
-    try:
-        metadata = json.loads(transport_metadata) if transport_metadata else {}
-    except json.JSONDecodeError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="transport_metadata must be valid JSON",
-        ) from exc
-
-    if not isinstance(metadata, dict):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="transport_metadata must decode to a JSON object",
-        )
-
     try:
         submission = service.submit_archive(
             filename=archive.filename or "upload.tar",
@@ -60,8 +38,8 @@ async def submit_calculation(
             content=await archive.read(),
             product=product,
             country=country,
+            calculation_kind=calculation_kind,
             finished=finished,
-            transport_metadata=metadata,
         )
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc

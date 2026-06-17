@@ -9,6 +9,7 @@ import pandas as pd
 from reed.pipeline.models import NormalizedEventPayload
 from reed.serializers.dpp import make_dpp_output
 from reed.serializers.monitoring import make_monitoring_output
+from reed.serializers.simulation import make_simulation_output
 from reed.utils import Config
 
 
@@ -33,6 +34,15 @@ class ReedCalculationPipeline:
             country,
             machining_contributions,
         ) = self._calculate_scores(payload, tool_energy)
+        if payload.calculation_kind == "simulation":
+            return make_simulation_output(
+                product=product_name,
+                score_a1=score_a1,
+                score_a2=score_a2,
+                score_a3=score_a3,
+                machining_contributions=machining_contributions,
+            )
+
         if not payload.finished:
             return make_monitoring_output(
                 product=product_name,
@@ -129,7 +139,7 @@ class ReedCalculationPipeline:
         except Exception as exc:
             raise PipelineError("bonsai_database_error", str(exc)) from exc
 
-        product_name = payload.product or f"{payload.company.upper()} total"
+        product_name = payload.product.value
         product_activity = self._get_product_activity(
             reed, product_name, payload.country
         )
@@ -143,7 +153,7 @@ class ReedCalculationPipeline:
             ) from exc
 
         scenario_consumer = a3_activity
-        if not payload.finished:
+        if payload.calculation_kind == "simulation" or not payload.finished:
             from reed.LCA_functions import get_machining_activity
 
             try:
