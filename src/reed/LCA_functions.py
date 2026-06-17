@@ -104,7 +104,7 @@ def monitoring_footprint_output(product_activity, lcia_method, company="unknown"
     operations = [
         {
             "operation": row["name"],
-            "CO2 score": round(row["score"], 6),
+            "score": round(row["score"], 6),
         }
         for _, row in ca_df[ca_df["parent"] == "root"].iterrows()
     ]
@@ -197,7 +197,7 @@ def simulation_footprint_output(product_activity, lcia_method, company="unknown"
     machining_operations = [
         {
             "operation": row["name"],
-            "CO2 score": round(row["score"], 6),
+            "score": round(row["score"], 6),
         }
         for _, row in machining_ca_df[machining_ca_df["parent"] == "root"].iterrows()
     ]
@@ -224,7 +224,7 @@ def simulation_footprint_output(product_activity, lcia_method, company="unknown"
         },
         "a3_machining": {
             "total_kg_co2eq": round(
-                sum(op["amount"] for op in machining_operations), 4
+                sum(op["score"] for op in machining_operations), 4
             ),
             "operations": machining_operations,
         },
