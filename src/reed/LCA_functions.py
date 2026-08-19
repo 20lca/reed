@@ -3,6 +3,8 @@ import bw2analyzer as bwa
 from datetime import date
 import json
 
+from reed.serializers.dpp import make_dpp_output
+
 def lca_score(process_dict:dict, method:tuple)->pd.DataFrame:
     """_summary_
 
@@ -84,7 +86,26 @@ def get_machining_activity(total_activity):
         f"or its direct sub-activities"
     )
 
-def monitoring_footprint_output(product_activity, lcia_method, company="unknown", event_id="unknown"):
+def monitoring_footprint_output(
+    product_activity,
+    lcia_method,
+    company="unknown",
+    event_id="unknown",
+    scenario_df=None,
+    scenario_col=None,
+    amount=1.0,
+):
+
+    if scenario_df is not None:
+        return _monitoring_footprint_output_with_scenario(
+            product_activity=product_activity,
+            lcia_method=lcia_method,
+            scenario_df=scenario_df,
+            scenario_col=scenario_col,
+            amount=amount,
+            company=company,
+            event_id=event_id,
+        )
 
     # --- 1. Total impact ---
     lca = product_activity.lca(lcia_method)
@@ -175,6 +196,90 @@ def get_materials_activity(total_activity):
         f"No A1 material input activity found in exchanges of '{total_activity['name']}' "
         f"or its direct sub-activities"
     )
+
+
+def lcia_score_for_named_input(
+    parent_activity,
+    name_fragment,
+    method,
+    scenario_df=None,
+    scenario_col=None,
+    amount=1.0,
+):
+    """Score direct inputs whose activity names contain ``name_fragment``."""
+    matches = [
+        exchange
+        for exchange in parent_activity.technosphere()
+        if name_fragment.lower() in exchange.input.get("name", "").lower()
+    ]
+    if not matches:
+        raise ValueError(
+            f"No input containing '{name_fragment}' found in "
+            f"{parent_activity.get('name')}"
+        )
+
+    total_score = 0.0
+    for exchange in matches:
+        input_activity = exchange.input
+        input_amount = float(exchange["amount"]) * amount
+
+        if scenario_df is None:
+            lca = input_activity.lca(method)
+            lca.redo_lcia({input_activity.id: input_amount})
+            total_score += float(lca.score)
+        else:
+            from reed.swapping_data import lcia_for_activity_with_scenario
+
+            score, _ = lcia_for_activity_with_scenario(
+                activity=input_activity,
+                method=method,
+                scenario_df=scenario_df,
+                scenario_col=scenario_col,
+                amount=input_amount,
+            )
+            total_score += float(score)
+
+    return total_score
+
+
+def monitoring_dpp_output(
+    product_activity,
+    lcia_method,
+    company="unknown",
+    event_id="unknown",
+    scenario_df=None,
+    scenario_col=None,
+    amount=1.0,
+):
+    """Calculate and export the finished monitoring DPP result."""
+    phase_scores = {
+        phase: lcia_score_for_named_input(
+            parent_activity=product_activity,
+            name_fragment=phase,
+            method=lcia_method,
+            scenario_df=scenario_df,
+            scenario_col=scenario_col,
+            amount=amount,
+        )
+        for phase in ("A1", "A2", "A3")
+    }
+    report = make_dpp_output(
+        company=company,
+        event_id=event_id,
+        product=product_activity["name"],
+        country=product_activity.get("location"),
+        publication_date=date.today(),
+        score_a1=phase_scores["A1"],
+        score_a2=phase_scores["A2"],
+        score_a3=phase_scores["A3"],
+    )
+
+    filename = f"DPP_{company}_{event_id}_{date.today().isoformat()}.json"
+    with open(filename, "w") as f:
+        json.dump(report, f, indent=2)
+    print(f"Exported to {filename}")
+
+    return report
 
 
 def simulation_footprint_output(
@@ -278,32 +383,9 @@ def _simulation_footprint_output_with_scenario(
         amount=amount,
     )
 
-    def score(activity, demand_amount=1.0):
-        lca.lci(demand={activity.id: float(demand_amount)})
-        lca.lcia()
-        return float(lca.score)
-
-    materials_impact = score(get_materials_activity(product_activity))
-    transport_impact = score(get_transport_activity(product_activity))
-    machining_activity = get_machining_activity(product_activity)
-
-    machining_operations = []
-    for exchange in machining_activity.technosphere():
-        matrix_amount = float(
-            lca.technosphere_matrix[
-                lca.dicts.product[exchange.input.id],
-                lca.dicts.activity[machining_activity.id],
-            ]
-        )
-        if exchange.get("type") in ("technosphere", "generic technosphere"):
-            matrix_amount *= -1
-
-        machining_operations.append(
-            {
-                "operation": exchange.input.get("name", ""),
-                "score": round(score(exchange.input, matrix_amount), 6),
-            }
-        )
+    materials_impact = _scenario_score(lca, get_materials_activity(product_activity))
+    transport_impact = _scenario_score(lca, get_transport_activity(product_activity))
+    machining_operations = _scenario_machining_operations(product_activity, lca)
 
     report = {
         "product": product_activity["name"],
@@ -328,3 +410,70 @@ def _simulation_footprint_output_with_scenario(
     print(f"Exported to {filename}")
 
     return report
+
+
+def _monitoring_footprint_output_with_scenario(
+    product_activity,
+    lcia_method,
+    scenario_df,
+    scenario_col,
+    amount,
+    company,
+    event_id,
+):
+    """Create the unfinished monitoring report from scenario matrix values."""
+    from reed.swapping_data import lcia_for_activity_with_scenario
+
+    total_impact, lca = lcia_for_activity_with_scenario(
+        activity=product_activity,
+        method=lcia_method,
+        scenario_df=scenario_df,
+        scenario_col=scenario_col,
+        amount=amount,
+    )
+    operations = _scenario_machining_operations(product_activity, lca)
+
+    report = {
+        "product": product_activity["name"],
+        "total_climate_impact_kg_co2eq": round(float(total_impact), 4),
+        "machining_contributions": operations,
+    }
+
+    filename = f"monitoring_{company}_{event_id}_{date.today().isoformat()}.json"
+    with open(filename, "w") as f:
+        json.dump(report, f, indent=2)
+    print(f"Exported to {filename}")
+
+    return report
+
+
+def _scenario_score(lca, activity, amount=1.0):
+    lca.lci(demand={activity.id: float(amount)})
+    lca.lcia()
+    return float(lca.score)
+
+
+def _scenario_machining_operations(product_activity, lca):
+    machining_activity = get_machining_activity(product_activity)
+    operations = []
+
+    for exchange in machining_activity.technosphere():
+        matrix_amount = float(
+            lca.technosphere_matrix[
+                lca.dicts.product[exchange.input.id],
+                lca.dicts.activity[machining_activity.id],
+            ]
+        )
+        if exchange.get("type") in ("technosphere", "generic technosphere"):
+            matrix_amount *= -1
+
+        operations.append(
+            {
+                "operation": exchange.input.get("name", ""),
+                "score": round(
+                    _scenario_score(lca, exchange.input, matrix_amount), 6
+                ),
+            }
+        )
+
+    return operations
