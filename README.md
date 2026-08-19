@@ -71,7 +71,7 @@ The API returns `202 Accepted` with a `job_id` and `result_id`.
 
 Set `finished=false` (or `0`) for an in-progress production snapshot. Its result contains the current total climate impact and machining contributions. Set `finished=true` (or `1`) for the final upload to generate the full DPP result. `finished` defaults to `true` for backward compatibility.
 
-Set `calculation_kind=simulation` to run the simulation workflow with the same upload/job/result/consume lifecycle. Simulation results are not DPP documents; they include product total, A1 raw materials, A2 transport, and A3 machining operation contributions. `calculation_kind` defaults to `monitoring`.
+Set `calculation_kind=simulation` to run the simulation workflow with the same upload/job/result/consume lifecycle. Simulation results are not DPP documents; they include product total, A1 raw materials, A2 transport, and A3 machining operation contributions. Each machining operation exposes its scenario-derived `amount` and climate-impact `score` in kg CO2-eq. `calculation_kind` defaults to `monitoring`.
 
 Poll the job until `status` is `completed` or `failed`:
 

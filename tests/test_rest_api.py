@@ -34,8 +34,8 @@ class FakePipeline:
                 "a3_machining": {
                     "total_kg_co2eq": 3.0,
                     "operations": [
-                        {"operation": "drilling", "amount": 2.0},
-                        {"operation": "milling", "amount": 1.0},
+                        {"operation": "drilling", "amount": 2.0, "score": 2.25},
+                        {"operation": "milling", "amount": 1.0, "score": 0.75},
                     ],
                 },
             }
@@ -45,8 +45,8 @@ class FakePipeline:
                 "product": payload.product.value,
                 "total_climate_impact_kg_co2eq": 6.0,
                 "machining_contributions": [
-                    {"operation": "drilling", "amount": 2.0},
-                    {"operation": "milling", "amount": 1.0},
+                    {"operation": "drilling", "amount": 2.0, "score": 2.25},
+                    {"operation": "milling", "amount": 1.0, "score": 0.75},
                 ],
             }
 
@@ -360,8 +360,8 @@ def test_unfinished_submit_returns_monitoring_report(storage_root: Path):
             "product": "GOIMEK total",
             "total_climate_impact_kg_co2eq": 6.0,
             "machining_contributions": [
-                {"operation": "drilling", "amount": 2.0},
-                {"operation": "milling", "amount": 1.0},
+                {"operation": "drilling", "amount": 2.0, "score": 2.25},
+                {"operation": "milling", "amount": 1.0, "score": 0.75},
             ],
         }
 
@@ -399,8 +399,8 @@ def test_simulation_submit_returns_non_dpp_simulation_report(storage_root: Path)
             "a3_machining": {
                 "total_kg_co2eq": 3.0,
                 "operations": [
-                    {"operation": "drilling", "amount": 2.0},
-                    {"operation": "milling", "amount": 1.0},
+                    {"operation": "drilling", "amount": 2.0, "score": 2.25},
+                    {"operation": "milling", "amount": 1.0, "score": 0.75},
                 ],
             },
         }
@@ -691,9 +691,13 @@ def test_real_pipeline_selects_output_by_finished_state(
             "GOIMEK total",
             "ES",
             [
-                {"operation": "drilling", "amount": 2.5},
-                {"operation": "milling", "amount": 1.25},
-                {"operation": "soraluce machine, Goimek", "amount": 0.000091},
+                {"operation": "drilling", "amount": 2.5, "score": 2.0},
+                {"operation": "milling", "amount": 1.25, "score": 0.9},
+                {
+                    "operation": "soraluce machine, Goimek",
+                    "amount": 0.000091,
+                    "score": 0.1,
+                },
             ],
         ),
     )
@@ -704,9 +708,13 @@ def test_real_pipeline_selects_output_by_finished_state(
     if calculation_kind == "monitoring" and not finished:
         assert result["total_climate_impact_kg_co2eq"] == 6.0
         assert result["machining_contributions"] == [
-            {"operation": "drilling", "amount": 2.5},
-            {"operation": "milling", "amount": 1.25},
-            {"operation": "soraluce machine, Goimek", "amount": 9.1e-05},
+            {"operation": "drilling", "amount": 2.5, "score": 2.0},
+            {"operation": "milling", "amount": 1.25, "score": 0.9},
+            {
+                "operation": "soraluce machine, Goimek",
+                "amount": 9.1e-05,
+                "score": 0.1,
+            },
         ]
     if calculation_kind == "simulation":
         assert "DPP" not in result
@@ -714,11 +722,15 @@ def test_real_pipeline_selects_output_by_finished_state(
         assert result["a1_raw_materials"] == {"total_kg_co2eq": 1.0}
         assert result["a2_transport"] == {"total_kg_co2eq": 2.0}
         assert result["a3_machining"] == {
-            "total_kg_co2eq": 3.7501,
+            "total_kg_co2eq": 3.0,
             "operations": [
-                {"operation": "drilling", "amount": 2.5},
-                {"operation": "milling", "amount": 1.25},
-                {"operation": "soraluce machine, Goimek", "amount": 9.1e-05},
+                {"operation": "drilling", "amount": 2.5, "score": 2.0},
+                {"operation": "milling", "amount": 1.25, "score": 0.9},
+                {
+                    "operation": "soraluce machine, Goimek",
+                    "amount": 9.1e-05,
+                    "score": 0.1,
+                },
             ],
         }
 
@@ -771,6 +783,59 @@ def test_monitoring_contributions_overlay_sensor_hours_and_keep_baseline(
     assert contributions == [
         {"operation": "drilling, soraluce", "amount": 50.165556},
         {"operation": "soraluce machine, Goimek", "amount": 0.000091},
+    ]
+
+
+def test_machining_contributions_are_scored_with_scenario_amounts(
+    storage_root: Path,
+):
+    class Activity:
+        def __init__(self, activity_id: int):
+            self.id = activity_id
+
+    class Exchange:
+        def __init__(self, input_activity: Activity):
+            self.input = input_activity
+
+    class MachiningActivity:
+        def __init__(self, exchanges):
+            self._exchanges = exchanges
+
+        def technosphere(self):
+            return self._exchanges
+
+    class ScenarioLCA:
+        def lci(self, demand):
+            self.demand = demand
+
+        def lcia(self):
+            activity_id, amount = next(iter(self.demand.items()))
+            self.score = amount * {1: 2.0, 2: 10.0}[activity_id]
+
+    drilling = Activity(1)
+    machine = Activity(2)
+    machining = MachiningActivity([Exchange(drilling), Exchange(machine)])
+    contributions = [
+        {"operation": "drilling, soraluce", "amount": 55.91},
+        {"operation": "soraluce machine, Goimek", "amount": 0.000091},
+    ]
+    pipeline = ReedCalculationPipeline(
+        Config(STORAGE_ROOT=storage_root / "storage")
+    )
+
+    scored = pipeline._score_machining_contributions(
+        machining,
+        contributions,
+        ScenarioLCA(),
+    )
+
+    assert scored == [
+        {"operation": "drilling, soraluce", "amount": 55.91, "score": 111.82},
+        {
+            "operation": "soraluce machine, Goimek",
+            "amount": 0.000091,
+            "score": 0.00091,
+        },
     ]
 
 

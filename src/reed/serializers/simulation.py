@@ -13,6 +13,7 @@ def make_simulation_output(
         {
             "operation": str(item["operation"]),
             "amount": round(float(item["amount"]), 6),
+            "score": round(float(item["score"]), 6),
         }
         for item in machining_contributions
     ]
@@ -27,7 +28,7 @@ def make_simulation_output(
             "total_kg_co2eq": round(score_a2, 4),
         },
         "a3_machining": {
-            "total_kg_co2eq": round(sum(item["amount"] for item in operations), 4),
+            "total_kg_co2eq": round(score_a3, 4),
             "operations": operations,
         },
     }

@@ -14,6 +14,7 @@ def make_monitoring_output(
             {
                 "operation": str(item["operation"]),
                 "amount": round(float(item["amount"]), 6),
+                "score": round(float(item["score"]), 6),
             }
             for item in machining_contributions
         ],

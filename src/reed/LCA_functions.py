@@ -177,7 +177,26 @@ def get_materials_activity(total_activity):
     )
 
 
-def simulation_footprint_output(product_activity, lcia_method, company="unknown", event_id="unknown"):
+def simulation_footprint_output(
+    product_activity,
+    lcia_method,
+    company="unknown",
+    event_id="unknown",
+    scenario_df=None,
+    scenario_col=None,
+    amount=1.0,
+):
+
+    if scenario_df is not None:
+        return _simulation_footprint_output_with_scenario(
+            product_activity=product_activity,
+            lcia_method=lcia_method,
+            scenario_df=scenario_df,
+            scenario_col=scenario_col,
+            amount=amount,
+            company=company,
+            event_id=event_id,
+        )
 
     # --- 1. Total impact --- capture score immediately before any redo_lcia
     lca = product_activity.lca(lcia_method)
@@ -231,6 +250,78 @@ def simulation_footprint_output(product_activity, lcia_method, company="unknown"
     }
 
     # --- 6. Export to JSON ---
+    filename = f"simulation_{company}_{event_id}_{date.today().isoformat()}.json"
+    with open(filename, "w") as f:
+        json.dump(report, f, indent=2)
+    print(f"Exported to {filename}")
+
+    return report
+
+
+def _simulation_footprint_output_with_scenario(
+    product_activity,
+    lcia_method,
+    scenario_df,
+    scenario_col,
+    amount,
+    company,
+    event_id,
+):
+    """Create the simulation report using scenario technosphere values."""
+    from reed.swapping_data import lcia_for_activity_with_scenario
+
+    total_impact, lca = lcia_for_activity_with_scenario(
+        activity=product_activity,
+        method=lcia_method,
+        scenario_df=scenario_df,
+        scenario_col=scenario_col,
+        amount=amount,
+    )
+
+    def score(activity, demand_amount=1.0):
+        lca.lci(demand={activity.id: float(demand_amount)})
+        lca.lcia()
+        return float(lca.score)
+
+    materials_impact = score(get_materials_activity(product_activity))
+    transport_impact = score(get_transport_activity(product_activity))
+    machining_activity = get_machining_activity(product_activity)
+
+    machining_operations = []
+    for exchange in machining_activity.technosphere():
+        matrix_amount = float(
+            lca.technosphere_matrix[
+                lca.dicts.product[exchange.input.id],
+                lca.dicts.activity[machining_activity.id],
+            ]
+        )
+        if exchange.get("type") in ("technosphere", "generic technosphere"):
+            matrix_amount *= -1
+
+        machining_operations.append(
+            {
+                "operation": exchange.input.get("name", ""),
+                "score": round(score(exchange.input, matrix_amount), 6),
+            }
+        )
+
+    report = {
+        "product": product_activity["name"],
+        "total_climate_impact_kg_co2eq": round(float(total_impact), 4),
+        "a1_raw_materials": {
+            "total_kg_co2eq": round(materials_impact, 4),
+        },
+        "a2_transport": {
+            "total_kg_co2eq": round(transport_impact, 4),
+        },
+        "a3_machining": {
+            "total_kg_co2eq": round(
+                sum(operation["score"] for operation in machining_operations), 4
+            ),
+            "operations": machining_operations,
+        },
+    }
+
     filename = f"simulation_{company}_{event_id}_{date.today().isoformat()}.json"
     with open(filename, "w") as f:
         json.dump(report, f, indent=2)

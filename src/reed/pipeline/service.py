@@ -261,6 +261,11 @@ class ReedCalculationPipeline:
         score_a3, lca_obj = lcia_score_for_named_input(
             "A3", full_scenario, dp=scenario_dp, lca_obj=lca_obj
         )
+        machining_contributions = self._score_machining_contributions(
+            scenario_consumer,
+            machining_contributions,
+            lca_obj,
+        )
         return (
             score_a1,
             score_a2,
@@ -302,6 +307,22 @@ class ReedCalculationPipeline:
                 }
             )
         return contributions
+
+    def _score_machining_contributions(
+        self,
+        machining_activity,
+        contributions: list[dict[str, object]],
+        lca_obj,
+    ) -> list[dict[str, object]]:
+        """Score each operation demand with the already-built scenario matrix."""
+        scored = []
+        exchanges = list(machining_activity.technosphere())
+        for exchange, contribution in zip(exchanges, contributions, strict=True):
+            amount = float(contribution["amount"])
+            lca_obj.lci(demand={exchange.input.id: amount})
+            lca_obj.lcia()
+            scored.append({**contribution, "score": float(lca_obj.score)})
+        return scored
 
     def _get_product_activity(self, reed_db, product_name: str, country: str | None):
         if country:
